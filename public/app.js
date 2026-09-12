@@ -497,8 +497,7 @@ async function handleSubmit(e) {
             showStatus('ID generated successfully!', 'success');
             updateIDPreview(result.student);
             document.getElementById('idPreview').classList.remove('hidden');
-            document.getElementById('saveBtn').classList.remove('hidden');
-            document.getElementById('downloadBtn').classList.remove('hidden');
+            document.getElementById('downloadSection').classList.remove('hidden');
         } else {
             showStatus(result.error || 'Error saving data', 'info');
         }
@@ -547,10 +546,33 @@ function showStatus(message, type) {
     status.classList.remove('hidden');
 }
 
-// PDF Generation
-function downloadPDF() {
+function getFileBaseName() {
+    if (!currentStudentData) return '';
+    return `${currentStudentData.lastName}_${currentStudentData.firstName}`;
+}
+
+function downloadAll() {
+    downloadReceipt();
+    setTimeout(() => downloadIDCard(), 500);
+    setTimeout(() => downloadPhoto(), 1000);
+    showStatus('Downloading all files...', 'valid');
+}
+
+function downloadPhoto() {
+    if (!capturedPhotoData) {
+        showStatus('No photo available', 'info');
+        return;
+    }
+    const link = document.createElement('a');
+    link.download = `${getFileBaseName()}_PIC.jpg`;
+    link.href = capturedPhotoData;
+    link.click();
+    showStatus('✓ Photo downloaded', 'valid');
+}
+
+function downloadReceipt() {
     if (!currentStudentData) {
-        showStatus('No student data to generate PDF', 'info');
+        showStatus('No student data to generate receipt', 'info');
         return;
     }
     
@@ -628,8 +650,90 @@ function downloadPDF() {
     doc.text('This is a computer-generated document.', 20, footerY + 14);
     
     // Save PDF
-    const filename = `ID_Receipt_${student.lastName}_${student.firstName}.pdf`;
-    doc.save(filename);
+    doc.save(`${getFileBaseName()}_rct.pdf`);
+    showStatus('✓ Receipt downloaded', 'valid');
+}
+
+function downloadIDCard() {
+    if (!currentStudentData || !capturedPhotoData) {
+        showStatus('No data available for ID card', 'info');
+        return;
+    }
     
-    showStatus('✓ PDF downloaded successfully', 'valid');
+    const canvas = document.createElement('canvas');
+    canvas.width = 400;
+    canvas.height = 600;
+    const ctx = canvas.getContext('2d');
+    
+    // Background
+    ctx.fillStyle = '#f0f0f3';
+    ctx.fillRect(0, 0, 400, 600);
+    
+    // Header
+    ctx.fillStyle = '#667eea';
+    ctx.fillRect(0, 0, 400, 80);
+    
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 18px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('SCHOOL NAME', 200, 35);
+    
+    ctx.font = '12px Arial';
+    ctx.fillText('Student Identification Card', 200, 55);
+    
+    // Photo
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(140, 100, 120, 150);
+    ctx.strokeStyle = '#667eea';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(140, 100, 120, 150);
+    
+    // Draw photo
+    const img = new Image();
+    img.onload = () => {
+        ctx.drawImage(img, 145, 105, 110, 140);
+        
+        // Name
+        const fullName = currentStudentData.middleName 
+            ? `${currentStudentData.firstName} ${currentStudentData.middleName} ${currentStudentData.lastName}`
+            : `${currentStudentData.firstName} ${currentStudentData.lastName}`;
+        
+        ctx.fillStyle = '#333333';
+        ctx.font = 'bold 16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(fullName, 200, 280);
+        
+        // Info
+        ctx.font = '12px Arial';
+        ctx.fillStyle = '#555555';
+        ctx.fillText(`Section: ${currentStudentData.section}`, 200, 310);
+        ctx.fillText(`LRN: ${currentStudentData.lrn}`, 200, 335);
+        
+        const formattedDate = new Date(currentStudentData.birthday).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+        ctx.fillText(`Birthday: ${formattedDate}`, 200, 360);
+        ctx.fillText(`Address: ${currentStudentData.address}`, 200, 385);
+        ctx.fillText(`Parent: ${currentStudentData.parentName}`, 200, 410);
+        ctx.fillText(`Contact: ${currentStudentData.contactNumber}`, 200, 435);
+        
+        // Footer
+        ctx.fillStyle = '#667eea';
+        ctx.fillRect(0, 520, 400, 80);
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px Arial';
+        ctx.fillText(`Generated on: ${new Date().toLocaleDateString()}`, 200, 550);
+        ctx.fillText('This is a computer-generated ID', 200, 570);
+        
+        // Download
+        const link = document.createElement('a');
+        link.download = `${getFileBaseName()}_ID.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        showStatus('✓ ID card downloaded', 'valid');
+    };
+    img.src = capturedPhotoData;
 }

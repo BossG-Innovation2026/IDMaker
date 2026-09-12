@@ -295,6 +295,33 @@ body {
     font-weight: 500;
 }
 
+/* Download Section */
+.download-section {
+    margin-top: 15px;
+    text-align: center;
+}
+
+.download-links {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    color: var(--primary);
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 5px;
+    text-decoration: underline;
+}
+
+.btn-link:hover {
+    color: var(--primary-dark);
+}
+
 /* Map Modal */
 .map-modal-content {
     max-width: 400px;
