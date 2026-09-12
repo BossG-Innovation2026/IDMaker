@@ -6,7 +6,7 @@ const PARENT_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || '0ACktHqI8zSSCUk9
 
 const SHEET_HEADERS = [
     'Name', 'Section', 'LRN', 'Birthday', 'Address',
-    'Parent/Guardian', 'Contact', 'Photo Link', 'Details Link', 'ID Card Link', 'Generated'
+    'Parent/Guardian', 'Contact', 'Photo Link', 'ID Card Link', 'Generated'
 ];
 
 class GoogleDriveService {
@@ -252,7 +252,7 @@ class GoogleDriveService {
 
             await this.sheets.spreadsheets.values.update({
                 spreadsheetId,
-                range: 'Students!A1:K1',
+                range: 'Students!A1:J1',
                 valueInputOption: 'RAW',
                 resource: { values: [SHEET_HEADERS] }
             });
@@ -290,14 +290,13 @@ class GoogleDriveService {
                 student.parentName,
                 student.contactNumber,
                 fileLinks.photo || '',
-                fileLinks.details || '',
                 fileLinks.idCard || '',
                 new Date().toLocaleString()
             ];
 
             await this.sheets.spreadsheets.values.append({
                 spreadsheetId,
-                range: 'Students!A:K',
+                range: 'Students!A:J',
                 valueInputOption: 'RAW',
                 insertDataOption: 'INSERT_ROWS',
                 resource: { values: [row] }

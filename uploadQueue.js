@@ -41,20 +41,6 @@ function buildFiles(student) {
     buffer: fs.readFileSync(photoPath)
   }];
 
-  if (student.receiptPath) {
-    const receiptPath = path.isAbsolute(student.receiptPath)
-      ? student.receiptPath
-      : path.join(__dirname, student.receiptPath);
-    if (fs.existsSync(receiptPath)) {
-      files.push({
-        key: 'receipt',
-        name: `${base}_details.txt`,
-        mimeType: 'text/plain',
-        buffer: fs.readFileSync(receiptPath)
-      });
-    }
-  }
-
   if (student.idCardPath) {
     const idPath = path.isAbsolute(student.idCardPath)
       ? student.idCardPath
@@ -104,7 +90,6 @@ async function processStudent(id) {
 
       const fileLinks = {
         photo: results.photo ? results.photo.fileLink : null,
-        details: results.details ? results.details.fileLink : null,
         idCard: results.idCard ? results.idCard.fileLink : null
       };
 

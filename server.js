@@ -4,7 +4,6 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
-const { jsPDF } = require('jspdf');
 const googleDrive = require('./googleDrive');
 const store = require('./store');
 const uploadQueue = require('./uploadQueue');
@@ -70,41 +69,6 @@ app.get('/api/classes', (req, res) => {
   res.json(classes);
 });
 
-// Generate details TXT server-side
-function generateDetails(student) {
-  const fullName = student.middleName
-    ? `${student.firstName} ${student.middleName} ${student.lastName}`
-    : `${student.firstName} ${student.lastName}`;
-
-  const formattedDate = new Date(student.birthday).toLocaleDateString('en-US', {
-    year: 'numeric', month: 'long', day: 'numeric'
-  });
-
-  const now = new Date().toLocaleString();
-
-  const details = [
-    '═══════════════════════════════════════════',
-    '   CABIAO SENIOR HIGH SCHOOL',
-    '   GENERATION DETAILS',
-    '═══════════════════════════════════════════',
-    '',
-    `Student Name    : ${fullName}`,
-    `Section         : ${student.section}`,
-    `LRN             : ${student.lrn}`,
-    `Birthday        : ${formattedDate}`,
-    `Address         : ${student.address}`,
-    `Parent/Guardian : ${student.parentName}`,
-    `Contact Number  : ${student.contactNumber}`,
-    '',
-    '───────────────────────────────────────────',
-    `Generated on    : ${now}`,
-    'This is a computer-generated document.',
-    '═══════════════════════════════════════════'
-  ].join('\n');
-
-  return Buffer.from(details, 'utf8');
-}
-
 // Generate ID card PNG server-side (returns buffer)
 function generateIDCard(student) {
   // We generate a simple JPEG using the photo and text data
@@ -168,17 +132,7 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    // Stage the receipt PDF on disk for background upload
-    try {
-      const receiptBuffer = generateDetails(student);
-      const receiptName = `${student.id}_details.txt`;
-      fs.writeFileSync(path.join(__dirname, 'uploads', receiptName), receiptBuffer);
-      student.receiptPath = path.join('uploads', receiptName);
-    } catch (receiptError) {
-      console.error('Receipt generation failed:', receiptError.message);
-    }
-
-    // Stage the ID card image on disk for background upload
+    // Generate ID card on disk for background upload
     try {
       const idCardBuffer = generateIDCard(student);
       if (idCardBuffer) {

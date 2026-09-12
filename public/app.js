@@ -683,7 +683,7 @@ function getFileBaseName() {
 }
 
 function downloadAll() {
-    downloadDetails();
+    downloadReceipt();
     setTimeout(() => downloadIDCard(), 500);
     setTimeout(() => downloadPhoto(), 1000);
     showStatus('Downloading all files...', 'valid');
@@ -701,56 +701,99 @@ function downloadPhoto() {
     showStatus('✓ Photo downloaded', 'valid');
 }
 
-function downloadDetails() {
-    if (!currentStudentData) {
-        showStatus('No student data to generate details', 'info');
+function downloadReceipt() {
+    if (!currentStudentData || !capturedPhotoData) {
+        showStatus('No data available for receipt', 'info');
         return;
     }
-    
-    const student = currentStudentData;
-    const fullName = student.middleName 
-        ? `${student.firstName} ${student.middleName} ${student.lastName}`
-        : `${student.firstName} ${student.lastName}`;
-    
-    const formattedDate = new Date(student.birthday).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
-    
-    const now = new Date().toLocaleString();
-    
-    const details = `
-═══════════════════════════════════════════
-   CABIAO SENIOR HIGH SCHOOL
-   GENERATION DETAILS
-═══════════════════════════════════════════
 
-Student Name    : ${fullName}
-Section         : ${student.section}
-LRN             : ${student.lrn}
-Birthday        : ${formattedDate}
-Address         : ${student.address}
-Parent/Guardian : ${student.parentName}
-Contact Number  : ${student.contactNumber}
+    const canvas = document.createElement('canvas');
+    canvas.width = 400;
+    canvas.height = 700;
+    const ctx = canvas.getContext('2d');
 
-───────────────────────────────────────────
-Google Drive Status : ${student.driveUploaded ? 'Uploaded ✓' : 'Pending...'}
-Drive Link         : ${student.driveLink || 'Processing...'}
-───────────────────────────────────────────
+    ctx.fillStyle = '#f0f0f3';
+    ctx.fillRect(0, 0, 400, 700);
 
-Generated on : ${now}
-This is a computer-generated document.
+    ctx.fillStyle = '#667eea';
+    ctx.fillRect(0, 0, 400, 80);
 
-═══════════════════════════════════════════`;
-    
-    const blob = new Blob([details], { type: 'text/plain' });
-    const link = document.createElement('a');
-    link.download = `${getFileBaseName()}_details.txt`;
-    link.href = URL.createObjectURL(blob);
-    link.click();
-    URL.revokeObjectURL(link.href);
-    showStatus('✓ Details downloaded', 'valid');
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 18px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('CABIAO SENIOR HIGH SCHOOL', 200, 35);
+
+    ctx.font = '12px Arial';
+    ctx.fillText('TEMPORARY ID', 200, 55);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(140, 100, 120, 150);
+    ctx.strokeStyle = '#667eea';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(140, 100, 120, 150);
+
+    const img = new Image();
+    img.onload = () => {
+        ctx.drawImage(img, 145, 105, 110, 140);
+
+        const fullName = currentStudentData.middleName
+            ? `${currentStudentData.firstName} ${currentStudentData.middleName} ${currentStudentData.lastName}`
+            : `${currentStudentData.firstName} ${currentStudentData.lastName}`;
+
+        ctx.fillStyle = '#333333';
+        ctx.font = 'bold 16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(fullName, 200, 280);
+
+        ctx.font = '12px Arial';
+        ctx.fillStyle = '#555555';
+        ctx.fillText(`Section: ${currentStudentData.section}`, 200, 310);
+        ctx.fillText(`LRN: ${currentStudentData.lrn}`, 200, 335);
+
+        const formattedDate = new Date(currentStudentData.birthday).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+        ctx.fillText(`Birthday: ${formattedDate}`, 200, 360);
+        ctx.fillText(`Address: ${currentStudentData.address}`, 200, 385);
+        ctx.fillText(`Parent: ${currentStudentData.parentName}`, 200, 410);
+        ctx.fillText(`Contact: ${currentStudentData.contactNumber}`, 200, 435);
+
+        ctx.strokeStyle = '#667eea';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(40, 460);
+        ctx.lineTo(360, 460);
+        ctx.stroke();
+
+        ctx.fillStyle = '#667eea';
+        ctx.font = 'bold 11px Arial';
+        ctx.fillText('GENERATION DETAILS', 200, 480);
+
+        ctx.fillStyle = '#555555';
+        ctx.font = '10px Arial';
+        ctx.fillText(`Generated on: ${new Date().toLocaleString()}`, 200, 500);
+        ctx.fillText('This is a computer-generated ID.', 200, 515);
+
+        const driveStatus = currentStudentData.driveUploaded ? 'Uploaded to Drive' : 'Pending upload';
+        ctx.fillText(`Drive Status: ${driveStatus}`, 200, 530);
+
+        ctx.fillStyle = '#667eea';
+        ctx.fillRect(0, 620, 400, 80);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px Arial';
+        ctx.fillText('CABIAO SENIOR HIGH SCHOOL', 200, 655);
+        ctx.fillText('Cabiao, Nueva Ecija', 200, 670);
+
+        const link = document.createElement('a');
+        link.download = `${getFileBaseName()}_receipt.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        showStatus('✓ Receipt downloaded', 'valid');
+    };
+    img.src = capturedPhotoData;
 }
 
 function downloadIDCard() {
