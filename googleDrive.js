@@ -2,7 +2,7 @@ const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
 
-const PARENT_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || '1A9rgjX1F0bOIMLdLk2jCnIQL4nhdHA6m';
+const PARENT_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || '0ACktHqI8zSSCUk9PVA';
 
 class GoogleDriveService {
     constructor() {
