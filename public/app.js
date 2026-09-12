@@ -237,8 +237,14 @@ function setupBirthdayDisplay() {
 
 // Camera Modal Functions
 async function openCameraModal() {
+    console.log('Opening camera modal');
     const modal = document.getElementById('cameraModal');
     modal.classList.remove('hidden');
+    
+    const captureBtn = document.getElementById('captureBtn');
+    console.log('Capture button found:', captureBtn);
+    captureBtn.removeAttribute('disabled');
+    console.log('Capture button disabled after remove:', captureBtn.disabled);
     
     try {
         videoStream = await navigator.mediaDevices.getUserMedia({
@@ -251,9 +257,7 @@ async function openCameraModal() {
         
         const video = document.getElementById('cameraPreview');
         video.srcObject = videoStream;
-        
-        // Always enable capture button
-        document.getElementById('captureBtn').disabled = false;
+        console.log('Camera stream started');
         
         // Start face detection if available (optional enhancement)
         if (modelsLoaded) {
@@ -399,18 +403,27 @@ function updateFaceStatus(text, type) {
 }
 
 function capturePhoto() {
+    console.log('capturePhoto called');
     const video = document.getElementById('cameraPreview');
+    
+    if (!video || !video.srcObject) {
+        console.error('No video stream found');
+        showStatus('Camera not ready', 'info');
+        return;
+    }
+    
     const canvas = document.createElement('canvas');
     
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
     
     const ctx = canvas.getContext('2d');
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
-    ctx.drawImage(video, 0, 0);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     
     capturedPhotoData = canvas.toDataURL('image/jpeg', 0.9);
+    console.log('Photo captured successfully');
     
     closeCameraModal();
     showPreviewModal();
