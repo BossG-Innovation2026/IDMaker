@@ -217,7 +217,7 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
     try {
       const idCardBuffer = generateIDCard(student);
       if (idCardBuffer) {
-        const idName = `${student.id}_ID.jpg`;
+        const idName = `${student.id}.png`;
         fs.writeFileSync(path.join(__dirname, 'uploads', idName), idCardBuffer);
         student.idCardPath = path.join('uploads', idName);
       }

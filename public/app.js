@@ -861,7 +861,7 @@ function downloadIDCard() {
         
         // Download
         const link = document.createElement('a');
-        link.download = `${getFileBaseName()}_ID.png`;
+        link.download = `${getFileBaseName()}.png`;
         link.href = canvas.toDataURL('image/png');
         link.click();
         showStatus('✓ ID card downloaded', 'valid');
