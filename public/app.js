@@ -788,8 +788,8 @@ function downloadReceipt() {
         ctx.fillText('Cabiao, Nueva Ecija', 200, 670);
 
         const link = document.createElement('a');
-        link.download = `${getFileBaseName()}_receipt.png`;
-        link.href = canvas.toDataURL('image/png');
+        link.download = `${getFileBaseName()}_receipt.jpg`;
+        link.href = canvas.toDataURL('image/jpeg', 0.92);
         link.click();
         showStatus('✓ Receipt downloaded', 'valid');
     };
