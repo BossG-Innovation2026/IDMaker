@@ -16,7 +16,29 @@ class GoogleDriveService {
         if (this.initialized) return;
 
         try {
-            // Try environment variables first
+            const oauthClientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+            const oauthClientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+            const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+
+            // Prefer OAuth2 (a real user account) - required for My Drive uploads,
+            // since service accounts have no storage quota.
+            if (oauthClientId && oauthClientSecret && refreshToken) {
+                const oauth2Client = new google.auth.OAuth2(
+                    oauthClientId,
+                    oauthClientSecret,
+                    process.env.GOOGLE_OAUTH_REDIRECT_URI || 'https://developers.google.com/oauthplayground'
+                );
+                oauth2Client.setCredentials({ refresh_token: refreshToken });
+
+                this.auth = oauth2Client;
+                this.authType = 'oauth2';
+                this.drive = google.drive({ version: 'v3', auth: this.auth });
+                this.initialized = true;
+                console.log('✓ Google Drive initialized (OAuth2 user account)');
+                return;
+            }
+
+            // Fall back to service account (works only with Shared Drives)
             const envCredentials = {
                 type: 'service_account',
                 project_id: process.env.GOOGLE_PROJECT_ID,
@@ -30,20 +52,18 @@ class GoogleDriveService {
                 client_x509_cert_url: `https://www.googleapis.com/robot/v1/metadata/x509/${encodeURIComponent(process.env.GOOGLE_CLIENT_EMAIL)}`
             };
 
-            // Check if env credentials are complete
             const hasEnvCreds = Object.values(envCredentials).every(v => v && v !== '');
-            
+
             let credentials;
             if (hasEnvCreds) {
                 credentials = envCredentials;
             } else {
-                // Fall back to credentials.json file
                 const keyPath = path.join(__dirname, 'credentials.json');
                 if (fs.existsSync(keyPath)) {
                     console.log('📥 Loading credentials from credentials.json');
                     credentials = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
                 } else {
-                    throw new Error('No Google Drive credentials found. Set environment variables or place credentials.json in server/');
+                    throw new Error('No Google Drive credentials found. Set OAuth or service-account env vars, or place credentials.json in server/');
                 }
             }
 
@@ -53,8 +73,9 @@ class GoogleDriveService {
             });
 
             this.drive = google.drive({ version: 'v3', auth: this.auth });
+            this.authType = 'service_account';
             this.initialized = true;
-            console.log('✓ Google Drive service initialized');
+            console.log('✓ Google Drive initialized (service account)');
         } catch (error) {
             console.error('Failed to initialize Google Drive:', error.message);
             this.initialized = false;
@@ -161,10 +182,16 @@ class GoogleDriveService {
                 folderId: sectionFolderId
             };
         } catch (error) {
-            console.error('Error uploading student photo:', error);
+            const msg = error.message || String(error);
+            if (msg.includes('storage quota')) {
+                console.error('Drive upload blocked: service accounts cannot write to My Drive. ' +
+                    'Use OAuth2 (GOOGLE_OAUTH_*) or a Shared Drive. See .env.example.');
+            } else {
+                console.error('Error uploading student photo:', error);
+            }
             return {
                 success: false,
-                error: error.message
+                error: msg
             };
         }
     }
