@@ -141,7 +141,9 @@ function updateAddress() {
     
     if (town && barangay && specificLocation) {
         const { province, zipcode } = locationData[town] || {};
-        addressField.value = `${specificLocation}, ${barangay}, ${town}, ${province || ''} ${zipcode || ''}`.trim();
+        // Format as proper case (capitalize each word)
+        const address = `${specificLocation}, ${barangay}, ${town}, ${province || ''} ${zipcode || ''}`.trim();
+        addressField.value = address.replace(/\b\w/g, char => char.toUpperCase());
     } else {
         addressField.value = '';
     }
