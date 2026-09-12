@@ -79,7 +79,8 @@ class GoogleDriveService {
             const response = await this.drive.files.list({
                 q: `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`,
                 fields: 'files(id, name)',
-                spaces: 'drive'
+                spaces: 'drive',
+                supportsAllDrives: true
             });
 
             if (response.data.files.length > 0) {
@@ -96,7 +97,8 @@ class GoogleDriveService {
 
             const folder = await this.drive.files.create({
                 resource: folderMetadata,
-                fields: 'id'
+                fields: 'id',
+                supportsAllDrives: true
             });
 
             this.folderCache[cacheKey] = folder.data.id;
@@ -116,6 +118,7 @@ class GoogleDriveService {
         }
 
         try {
+            const { Readable } = require('stream');
             const fileMetadata = {
                 name: fileName,
                 parents: [folderId]
@@ -123,13 +126,14 @@ class GoogleDriveService {
 
             const media = {
                 mimeType: mimeType,
-                body: fileBuffer
+                body: Readable.from([fileBuffer])
             };
 
             const file = await this.drive.files.create({
                 resource: fileMetadata,
                 media: media,
-                fields: 'id, webViewLink'
+                fields: 'id, webViewLink',
+                supportsAllDrives: true
             });
 
             return {
