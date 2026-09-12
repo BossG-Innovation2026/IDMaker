@@ -48,8 +48,8 @@ function buildFiles(student) {
     if (fs.existsSync(idPath)) {
       files.push({
         key: 'idCard',
-        name: `${base}.png`,
-        mimeType: 'image/png',
+    name: `${base}_ID.pdf`,
+    mimeType: 'application/pdf',
         buffer: fs.readFileSync(idPath)
       });
     }

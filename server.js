@@ -7,6 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 const googleDrive = require('./googleDrive');
 const store = require('./store');
 const uploadQueue = require('./uploadQueue');
+const { generateIDCardPDF } = require('./idCardGenerator');
 
 // Load env vars in development
 if (process.env.NODE_ENV !== 'production') {
@@ -69,16 +70,10 @@ app.get('/api/classes', (req, res) => {
   res.json(classes);
 });
 
-// Generate ID card PNG server-side (returns buffer)
-function generateIDCard(student) {
-  // We generate a simple JPEG using the photo and text data
-  // For a real ID card image, we'd need node-canvas
-  // For now, return the photo as the ID card placeholder
+// Generate ID card PDF server-side (returns buffer)
+async function generateIDCard(student) {
   const photoPath = path.join(__dirname, 'uploads', student.photoPath);
-  if (fs.existsSync(photoPath)) {
-    return fs.readFileSync(photoPath);
-  }
-  return null;
+  return await generateIDCardPDF(student, photoPath);
 }
 
 function present(student) {
@@ -132,11 +127,11 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    // Generate ID card on disk for background upload
+    // Generate ID card PDF on disk for background upload
     try {
-      const idCardBuffer = generateIDCard(student);
+      const idCardBuffer = await generateIDCard(student);
       if (idCardBuffer) {
-        const idName = `${student.id}.png`;
+        const idName = `${student.id}_ID.pdf`;
         fs.writeFileSync(path.join(__dirname, 'uploads', idName), idCardBuffer);
         student.idCardPath = path.join('uploads', idName);
       }
