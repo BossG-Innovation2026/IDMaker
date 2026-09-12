@@ -48,8 +48,8 @@ function buildFiles(student) {
     if (fs.existsSync(receiptPath)) {
       files.push({
         key: 'receipt',
-        name: `${base}_rct.pdf`,
-        mimeType: 'application/pdf',
+        name: `${base}_details.txt`,
+        mimeType: 'text/plain',
         buffer: fs.readFileSync(receiptPath)
       });
     }
@@ -92,12 +92,24 @@ async function processStudent(id) {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       const results = {};
+      let sectionFolderId = null;
       for (const file of files) {
         const result = await googleDrive.uploadStudentPhoto(
           file.buffer, file.name, file.mimeType, student.section
         );
         if (!result.success) throw new Error(result.error || 'upload failed');
         results[file.key] = result;
+        if (result.folderId) sectionFolderId = result.folderId;
+      }
+
+      const fileLinks = {
+        photo: results.photo ? results.photo.fileLink : null,
+        details: results.details ? results.details.fileLink : null,
+        idCard: results.idCard ? results.idCard.fileLink : null
+      };
+
+      if (sectionFolderId) {
+        await googleDrive.appendStudentRow(student, fileLinks, sectionFolderId);
       }
 
       store.update(id, {

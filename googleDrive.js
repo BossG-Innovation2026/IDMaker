@@ -4,11 +4,18 @@ const fs = require('fs');
 
 const PARENT_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || '0ACktHqI8zSSCUk9PVA';
 
+const SHEET_HEADERS = [
+    'Name', 'Section', 'LRN', 'Birthday', 'Address',
+    'Parent/Guardian', 'Contact', 'Photo Link', 'Details Link', 'ID Card Link', 'Generated'
+];
+
 class GoogleDriveService {
     constructor() {
         this.auth = null;
         this.drive = null;
+        this.sheets = null;
         this.folderCache = {};
+        this.sheetCache = {};
         this.initialized = false;
     }
 
@@ -33,6 +40,7 @@ class GoogleDriveService {
                 this.auth = oauth2Client;
                 this.authType = 'oauth2';
                 this.drive = google.drive({ version: 'v3', auth: this.auth });
+                this.sheets = google.sheets({ version: 'v4', auth: this.auth });
                 this.initialized = true;
                 console.log('✓ Google Drive initialized (OAuth2 user account)');
                 return;
@@ -74,10 +82,11 @@ class GoogleDriveService {
 
             this.auth = new google.auth.GoogleAuth({
                 credentials: credentials,
-                scopes: ['https://www.googleapis.com/auth/drive']
+                scopes: ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
             });
 
             this.drive = google.drive({ version: 'v3', auth: this.auth });
+            this.sheets = google.sheets({ version: 'v4', auth: this.auth });
             this.authType = 'service_account';
             this.initialized = true;
             console.log('✓ Google Drive initialized (service account)');
@@ -199,6 +208,106 @@ class GoogleDriveService {
                 success: false,
                 error: msg
             };
+        }
+    }
+    async getOrCreateSheet(section, folderId) {
+        await this.initialize();
+        if (!this.initialized) throw new Error('Google Drive not initialized');
+
+        const cacheKey = `sheet_${section}`;
+        if (this.sheetCache[cacheKey]) return this.sheetCache[cacheKey];
+
+        const sheetName = `${section} - Records`;
+
+        try {
+            const response = await this.drive.files.list({
+                q: `name='${sheetName}' and mimeType='application/vnd.google-apps.spreadsheet' and '${folderId}' in parents and trashed=false`,
+                fields: 'files(id, name)',
+                spaces: 'drive',
+                supportsAllDrives: true,
+                includeItemsFromAllDrives: true
+            });
+
+            if (response.data.files.length > 0) {
+                this.sheetCache[cacheKey] = response.data.files[0].id;
+                return response.data.files[0].id;
+            }
+
+            const spreadsheet = await this.sheets.spreadsheets.create({
+                resource: {
+                    properties: { title: sheetName },
+                    sheets: [{ properties: { title: 'Students' } }]
+                },
+                fields: 'spreadsheetId'
+            });
+
+            const spreadsheetId = spreadsheet.data.spreadsheetId;
+
+            await this.drive.files.update({
+                fileId: spreadsheetId,
+                addParents: folderId,
+                fields: 'id, parents',
+                supportsAllDrives: true
+            });
+
+            await this.sheets.spreadsheets.values.update({
+                spreadsheetId,
+                range: 'Students!A1:K1',
+                valueInputOption: 'RAW',
+                resource: { values: [SHEET_HEADERS] }
+            });
+
+            this.sheetCache[cacheKey] = spreadsheetId;
+            console.log(`Created spreadsheet: ${sheetName}`);
+            return spreadsheetId;
+        } catch (error) {
+            console.error('Error creating/finding sheet:', error.message);
+            throw error;
+        }
+    }
+
+    async appendStudentRow(student, fileLinks, folderId) {
+        await this.initialize();
+        if (!this.initialized) throw new Error('Google Drive not initialized');
+
+        try {
+            const spreadsheetId = await this.getOrCreateSheet(student.section, folderId);
+
+            const fullName = student.middleName
+                ? `${student.firstName} ${student.middleName} ${student.lastName}`
+                : `${student.firstName} ${student.lastName}`;
+
+            const formattedDate = new Date(student.birthday).toLocaleDateString('en-US', {
+                year: 'numeric', month: 'long', day: 'numeric'
+            });
+
+            const row = [
+                fullName,
+                student.section,
+                student.lrn,
+                formattedDate,
+                student.address,
+                student.parentName,
+                student.contactNumber,
+                fileLinks.photo || '',
+                fileLinks.details || '',
+                fileLinks.idCard || '',
+                new Date().toLocaleString()
+            ];
+
+            await this.sheets.spreadsheets.values.append({
+                spreadsheetId,
+                range: 'Students!A:K',
+                valueInputOption: 'RAW',
+                insertDataOption: 'INSERT_ROWS',
+                resource: { values: [row] }
+            });
+
+            console.log(`Appended row to ${student.section} sheet: ${fullName}`);
+            return { success: true, spreadsheetId };
+        } catch (error) {
+            console.error('Error appending to sheet:', error.message);
+            return { success: false, error: error.message };
         }
     }
 }

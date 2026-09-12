@@ -70,9 +70,8 @@ app.get('/api/classes', (req, res) => {
   res.json(classes);
 });
 
-// Generate receipt PDF server-side
-function generateReceipt(student) {
-  const doc = new jsPDF();
+// Generate details TXT server-side
+function generateDetails(student) {
   const fullName = student.middleName
     ? `${student.firstName} ${student.middleName} ${student.lastName}`
     : `${student.firstName} ${student.lastName}`;
@@ -81,63 +80,29 @@ function generateReceipt(student) {
     year: 'numeric', month: 'long', day: 'numeric'
   });
 
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'bold');
-  doc.text('STUDENT ID REGISTRATION RECEIPT', 105, 20, { align: 'center' });
+  const now = new Date().toLocaleString();
 
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  doc.text('This document serves as proof of registration', 105, 28, { align: 'center' });
+  const details = [
+    '═══════════════════════════════════════════',
+    '   CABIAO SENIOR HIGH SCHOOL',
+    '   GENERATION DETAILS',
+    '═══════════════════════════════════════════',
+    '',
+    `Student Name    : ${fullName}`,
+    `Section         : ${student.section}`,
+    `LRN             : ${student.lrn}`,
+    `Birthday        : ${formattedDate}`,
+    `Address         : ${student.address}`,
+    `Parent/Guardian : ${student.parentName}`,
+    `Contact Number  : ${student.contactNumber}`,
+    '',
+    '───────────────────────────────────────────',
+    `Generated on    : ${now}`,
+    'This is a computer-generated document.',
+    '═══════════════════════════════════════════'
+  ].join('\n');
 
-  doc.setDrawColor(102, 126, 234);
-  doc.setLineWidth(0.5);
-  doc.line(20, 32, 190, 32);
-
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
-  doc.text('STUDENT INFORMATION', 20, 42);
-
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-
-  const startY = 52;
-  const lineHeight = 8;
-  const fields = [
-    { label: 'Name:', value: fullName },
-    { label: 'Section:', value: student.section },
-    { label: 'LRN:', value: student.lrn },
-    { label: 'Birthday:', value: formattedDate },
-    { label: 'Address:', value: student.address },
-    { label: 'Parent/Guardian:', value: student.parentName },
-    { label: 'Contact Number:', value: student.contactNumber }
-  ];
-
-  fields.forEach((field, index) => {
-    const y = startY + (index * lineHeight);
-    doc.setFont('helvetica', 'bold');
-    doc.text(field.label, 20, y);
-    doc.setFont('helvetica', 'normal');
-    doc.text(field.value || '-', 60, y);
-  });
-
-  // Add photo
-  const photoPath = path.join(__dirname, 'uploads', student.photoPath);
-  if (fs.existsSync(photoPath)) {
-    const photoData = fs.readFileSync(photoPath);
-    const base64Photo = photoData.toString('base64');
-    doc.addImage(`data:image/jpeg;base64,${base64Photo}`, 'JPEG', 150, 40, 30, 40);
-  }
-
-  const footerY = startY + (fields.length * lineHeight) + 10;
-  doc.setDrawColor(102, 126, 234);
-  doc.line(20, footerY, 190, footerY);
-
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`Generated on: ${new Date().toLocaleString()}`, 20, footerY + 8);
-  doc.text('This is a computer-generated document.', 20, footerY + 14);
-
-  return Buffer.from(doc.output('arraybuffer'));
+  return Buffer.from(details, 'utf8');
 }
 
 // Generate ID card PNG server-side (returns buffer)
@@ -205,8 +170,8 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
 
     // Stage the receipt PDF on disk for background upload
     try {
-      const receiptBuffer = generateReceipt(student);
-      const receiptName = `${student.id}_rct.pdf`;
+      const receiptBuffer = generateDetails(student);
+      const receiptName = `${student.id}_details.txt`;
       fs.writeFileSync(path.join(__dirname, 'uploads', receiptName), receiptBuffer);
       student.receiptPath = path.join('uploads', receiptName);
     } catch (receiptError) {
