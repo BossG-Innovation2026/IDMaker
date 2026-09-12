@@ -246,6 +246,24 @@ body {
     gap: 15px;
 }
 
+/* Field Validation */
+.field-validation {
+    margin-top: 5px;
+    font-size: 0.75rem;
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+.field-validation.valid {
+    color: var(--success);
+    background: rgba(72, 187, 120, 0.1);
+}
+
+.field-validation.invalid {
+    color: #e53e3e;
+    background: rgba(229, 62, 62, 0.1);
+}
+
 /* Date Display */
 .date-display {
     margin-top: 6px;

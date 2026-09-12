@@ -52,7 +52,45 @@ function setupEventListeners() {
     // Phone number formatting
     setupPhoneFormat();
     
-    // Birthday format display
+    // LRN validation
+    setupLRNValidation();
+    
+// LRN validation (12 digits only)
+function setupLRNValidation() {
+    const lrnField = document.getElementById('lrn');
+    const lrnValidation = document.getElementById('lrnValidation');
+    
+    if (lrnField && lrnValidation) {
+        lrnField.addEventListener('input', (e) => {
+            // Only allow numbers
+            e.target.value = e.target.value.replace(/\D/g, '');
+            
+            const value = e.target.value;
+            
+            if (value.length === 0) {
+                lrnValidation.classList.add('hidden');
+            } else if (value.length < 12) {
+                lrnValidation.textContent = `${value.length}/12 digits`;
+                lrnValidation.className = 'field-validation invalid';
+                lrnValidation.classList.remove('hidden');
+            } else if (value.length === 12) {
+                lrnValidation.textContent = '✓ Valid LRN';
+                lrnValidation.className = 'field-validation valid';
+                lrnValidation.classList.remove('hidden');
+            }
+        });
+        
+        lrnField.addEventListener('blur', (e) => {
+            if (e.target.value.length > 0 && e.target.value.length < 12) {
+                lrnValidation.textContent = 'LRN must be 12 digits';
+                lrnValidation.className = 'field-validation invalid';
+                lrnValidation.classList.remove('hidden');
+            }
+        });
+    }
+}
+
+// Birthday format display
     setupBirthdayDisplay();
     
     // GPS location
