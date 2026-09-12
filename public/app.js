@@ -90,6 +90,21 @@ function setupEventListeners() {
     setupLRNValidation();
     setupBirthdayDisplay();
     setupAddressDropdowns();
+    
+    // File upload fallback
+    document.getElementById('cameraInput').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            selectedFile = file;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                capturedPhotoData = e.target.result;
+                showPreviewModal();
+                showStatus('✓ Photo uploaded from gallery', 'valid');
+            };
+            reader.readAsDataURL(file);
+        }
+    });
 }
 
 // Address dropdowns
