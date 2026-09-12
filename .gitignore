@@ -4,3 +4,5 @@ uploads/*
 !uploads/.gitkeep
 credentials.json
 data/
+server.log
+server_err.log
