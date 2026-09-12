@@ -431,18 +431,55 @@ function capturePhoto() {
         return;
     }
     
+    // Use ImageCapture API if available (more reliable on mobile)
+    if (window.ImageCapture) {
+        const track = video.srcObject.getVideoTracks()[0];
+        const imageCapture = new ImageCapture(track);
+        imageCapture.takePhoto()
+            .then(blob => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    capturedPhotoData = reader.result;
+                    console.log('Photo captured via ImageCapture API');
+                    closeCameraModal();
+                    showPreviewModal();
+                };
+                reader.readAsDataURL(blob);
+            })
+            .catch(err => {
+                console.error('ImageCapture failed, falling back to canvas:', err);
+                captureWithCanvas(video);
+            });
+    } else {
+        captureWithCanvas(video);
+    }
+}
+
+function captureWithCanvas(video) {
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     
     const ctx = canvas.getContext('2d');
-    ctx.translate(canvas.width, 0);
-    ctx.scale(-1, 1);
+    // Draw without mirror - just flip horizontally after
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     
-    capturedPhotoData = canvas.toDataURL('image/jpeg', 0.9);
-    console.log('Photo captured, dimensions:', canvas.width, 'x', canvas.height);
+    // Check if frame is black (all pixels near 0)
+    const imageData = ctx.getImageData(0, 0, 10, 10).data;
+    let sum = 0;
+    for (let i = 0; i < imageData.length; i += 4) {
+        sum += imageData[i] + imageData[i+1] + imageData[i+2];
+    }
+    console.log('Canvas pixel sample sum:', sum);
     
+    if (sum < 10) {
+        console.log('Frame is black, retrying in 200ms...');
+        setTimeout(() => captureWithCanvas(video), 200);
+        return;
+    }
+    
+    capturedPhotoData = canvas.toDataURL('image/jpeg', 0.9);
+    console.log('Photo captured via canvas');
     closeCameraModal();
     showPreviewModal();
 }
