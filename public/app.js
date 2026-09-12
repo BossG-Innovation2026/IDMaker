@@ -579,12 +579,62 @@ async function handleSubmit(e) {
             updateIDPreview(result.student);
             document.getElementById('idPreview').classList.remove('hidden');
             document.getElementById('downloadSection').classList.remove('hidden');
+            setDriveNote('Uploading to Google Drive…', 'pending');
+            pollUploadStatus(result.student.id);
         } else {
             showStatus(result.error || 'Error saving data', 'info');
         }
     } catch (error) {
         showStatus('Error connecting to server', 'info');
     }
+}
+
+function setDriveNote(message, state) {
+    const note = document.getElementById('driveNote');
+    if (!note) return;
+    note.textContent = message;
+    note.className = `drive-note ${state || ''}`.trim();
+}
+
+async function pollUploadStatus(studentId, attempt = 0) {
+    const maxAttempts = 60;
+    try {
+        const res = await fetch(`${API_URL}/api/students/${studentId}/status`);
+        const data = await res.json();
+
+        if (data.uploadStatus === 'uploaded') {
+            setDriveNote('✓ Saved to Google Drive', 'ok');
+            return;
+        }
+        if (data.uploadStatus === 'failed') {
+            setDriveNote('⚠ Drive upload failed. Tap to retry.', 'fail');
+            const note = document.getElementById('driveNote');
+            note.style.cursor = 'pointer';
+            note.onclick = () => resyncUpload(studentId);
+            return;
+        }
+        if (attempt >= maxAttempts) {
+            setDriveNote('Still uploading… check back shortly.', 'pending');
+            return;
+        }
+    } catch (error) {
+        if (attempt >= maxAttempts) {
+            setDriveNote('Could not confirm upload status.', 'fail');
+            return;
+        }
+    }
+
+    setTimeout(() => pollUploadStatus(studentId, attempt + 1), 1500);
+}
+
+async function resyncUpload(studentId) {
+    setDriveNote('Retrying upload…', 'pending');
+    try {
+        await fetch(`${API_URL}/api/students/${studentId}/resync`, { method: 'POST' });
+    } catch (error) {
+        // fall through to polling
+    }
+    pollUploadStatus(studentId);
 }
 
 function updateIDPreview(student) {

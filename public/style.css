@@ -330,6 +330,20 @@ body {
     margin-top: 8px;
 }
 
+.drive-note.ok {
+    color: var(--success-dark);
+    font-weight: 600;
+}
+
+.drive-note.fail {
+    color: #c53030;
+    font-weight: 600;
+}
+
+.drive-note.pending {
+    color: var(--primary-dark);
+}
+
 /* Map Modal */
 .map-modal-content {
     max-width: 400px;

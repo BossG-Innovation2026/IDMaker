@@ -6,6 +6,8 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { jsPDF } = require('jspdf');
 const googleDrive = require('./googleDrive');
+const store = require('./store');
+const uploadQueue = require('./uploadQueue');
 
 // Load env vars in development
 if (process.env.NODE_ENV !== 'production') {
@@ -36,9 +38,6 @@ const storage = multer.diskStorage({
   }
 });
 const upload = multer({ storage });
-
-// In-memory data store
-let students = [];
 
 // Predefined classes list
 const classes = [
@@ -153,6 +152,13 @@ function generateIDCard(student) {
   return null;
 }
 
+function present(student) {
+  return {
+    ...student,
+    photoUrl: `/uploads/${student.photoPath}`
+  };
+}
+
 // Submit student data with photo
 app.post('/api/students', upload.single('photo'), async (req, res) => {
   try {
@@ -189,54 +195,44 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
       parentName,
       contactNumber,
       photoPath: req.file.filename,
+      photoMime: req.file.mimetype,
+      uploadStatus: 'pending',
+      uploadError: null,
+      driveUploaded: false,
+      driveLink: null,
       createdAt: new Date().toISOString()
     };
 
-    students.push(student);
-
-    // Upload all 3 files to Google Drive
-    const fileBase = `${lastName}_${firstName}`;
-    let driveResults = { photo: null, receipt: null, idCard: null };
-
+    // Stage the receipt PDF on disk for background upload
     try {
-      // 1. Upload Photo
-      const photoBuffer = fs.readFileSync(req.file.path);
-      const photoFileName = `${fileBase}_PIC${path.extname(req.file.originalname)}`;
-      driveResults.photo = await googleDrive.uploadStudentPhoto(
-        photoBuffer, photoFileName, req.file.mimetype, section
-      );
-      console.log(`✓ Photo uploaded: ${photoFileName} → ${section}/`);
-
-      // 2. Upload Receipt PDF
       const receiptBuffer = generateReceipt(student);
-      const receiptFileName = `${fileBase}_rct.pdf`;
-      driveResults.receipt = await googleDrive.uploadStudentPhoto(
-        receiptBuffer, receiptFileName, 'application/pdf', section
-      );
-      console.log(`✓ Receipt uploaded: ${receiptFileName} → ${section}/`);
-
-      // 3. Upload ID Card
-      const idCardBuffer = generateIDCard(student);
-      if (idCardBuffer) {
-        const idFileName = `${fileBase}_ID.jpg`;
-        driveResults.idCard = await googleDrive.uploadStudentPhoto(
-          idCardBuffer, idFileName, 'image/jpeg', section
-        );
-        console.log(`✓ ID Card uploaded: ${idFileName} → ${section}/`);
-      }
-    } catch (driveError) {
-      console.error('Drive upload error:', driveError.message);
+      const receiptName = `${student.id}_rct.pdf`;
+      fs.writeFileSync(path.join(__dirname, 'uploads', receiptName), receiptBuffer);
+      student.receiptPath = path.join('uploads', receiptName);
+    } catch (receiptError) {
+      console.error('Receipt generation failed:', receiptError.message);
     }
 
-    res.json({
-      success: true,
-      message: 'Student data saved successfully',
-      student: {
-        ...student,
-        photoUrl: `/uploads/${student.photoPath}`,
-        driveUploaded: driveResults.photo?.success || false,
-        driveLink: driveResults.photo?.fileLink || null
+    // Stage the ID card image on disk for background upload
+    try {
+      const idCardBuffer = generateIDCard(student);
+      if (idCardBuffer) {
+        const idName = `${student.id}_ID.jpg`;
+        fs.writeFileSync(path.join(__dirname, 'uploads', idName), idCardBuffer);
+        student.idCardPath = path.join('uploads', idName);
       }
+    } catch (idCardError) {
+      console.error('ID card generation failed:', idCardError.message);
+    }
+
+    store.add(student);
+    uploadQueue.enqueue(student.id);
+
+    // Respond immediately; uploads continue in the background
+    res.status(202).json({
+      success: true,
+      message: 'Student saved. Files are uploading to Google Drive in the background.',
+      student: present(student)
     });
   } catch (error) {
     console.error('Error saving student:', error);
@@ -246,47 +242,51 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
 
 // Get all students
 app.get('/api/students', (req, res) => {
-  const studentsWithUrl = students.map(s => ({
-    ...s,
-    photoUrl: `/uploads/${s.photoPath}`
-  }));
-  res.json(studentsWithUrl);
+  res.json(store.all().map(present));
 });
 
-// Manual save to Google Drive
-app.post('/api/save-to-drive', async (req, res) => {
-  try {
-    const { studentId } = req.body;
-    const student = students.find(s => s.id === studentId);
-
-    if (!student) {
-      return res.status(404).json({ error: 'Student not found' });
-    }
-
-    const filePath = path.join(__dirname, 'uploads', student.photoPath);
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'Photo file not found' });
-    }
-
-    const fileBuffer = fs.readFileSync(filePath);
-    const fileName = `${student.lastName}_${student.firstName}_${student.lrn}${path.extname(student.photoPath)}`;
-    
-    const result = await googleDrive.uploadStudentPhoto(
-      fileBuffer,
-      fileName,
-      'image/jpeg',
-      student.section
-    );
-
-    res.json({
-      success: true,
-      message: 'Photo uploaded to Google Drive',
-      fileLink: result.fileLink
-    });
-  } catch (error) {
-    console.error('Error saving to Drive:', error);
-    res.status(500).json({ error: 'Failed to save to Google Drive' });
+// Get one student's upload status
+app.get('/api/students/:id/status', (req, res) => {
+  const student = store.find(req.params.id);
+  if (!student) {
+    return res.status(404).json({ error: 'Student not found' });
   }
+  res.json({
+    id: student.id,
+    uploadStatus: student.uploadStatus,
+    uploadError: student.uploadError,
+    driveUploaded: !!student.driveUploaded,
+    driveLink: student.driveLink,
+    driveFiles: student.driveFiles || null
+  });
+});
+
+// Re-queue a failed/pending upload
+app.post('/api/students/:id/resync', (req, res) => {
+  const student = store.find(req.params.id);
+  if (!student) {
+    return res.status(404).json({ error: 'Student not found' });
+  }
+  store.update(student.id, { uploadStatus: 'pending', uploadError: null });
+  uploadQueue.enqueue(student.id);
+  res.json({ success: true, message: 'Re-queued for upload', id: student.id });
+});
+
+// Queue stats
+app.get('/api/queue', (req, res) => {
+  res.json(uploadQueue.stats());
+});
+
+// Manual re-sync of a single student
+app.post('/api/save-to-drive', (req, res) => {
+  const { studentId } = req.body;
+  const student = store.find(studentId);
+  if (!student) {
+    return res.status(404).json({ error: 'Student not found' });
+  }
+  store.update(student.id, { uploadStatus: 'pending', uploadError: null });
+  uploadQueue.enqueue(student.id);
+  res.json({ success: true, message: 'Re-queued for upload', id: student.id });
 });
 
 // Serve uploaded files
@@ -297,4 +297,14 @@ app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log(`Classes available: ${classes.length} predefined`);
   console.log('Google Drive integration: Enabled');
+
+  // Recover unfinished uploads from a previous run
+  const pending = store.all().filter(s => s.uploadStatus !== 'uploaded');
+  if (pending.length > 0) {
+    console.log(`↻ Re-queuing ${pending.length} unfinished upload(s)`);
+    pending.forEach(s => {
+      store.update(s.id, { uploadStatus: 'pending' });
+      uploadQueue.enqueue(s.id);
+    });
+  }
 });

@@ -101,7 +101,8 @@ class GoogleDriveService {
                 q: `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`,
                 fields: 'files(id, name)',
                 spaces: 'drive',
-                supportsAllDrives: true
+                supportsAllDrives: true,
+                includeItemsFromAllDrives: true
             });
 
             if (response.data.files.length > 0) {
