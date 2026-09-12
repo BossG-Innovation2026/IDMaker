@@ -182,10 +182,36 @@
         </div>
     </div>
 
+    <!-- Photo Preview Modal (Approve/Reject) -->
+    <div id="previewModal" class="modal hidden">
+        <div class="modal-content preview-content">
+            <div class="modal-header">
+                <h2>📷 Photo Preview</h2>
+                <button type="button" class="close-btn" onclick="rejectPhoto()">✕</button>
+            </div>
+            <div class="preview-container">
+                <div class="preview-original" id="previewOriginal">
+                    <span class="preview-label">Original</span>
+                    <img id="originalPhoto" src="" alt="Original">
+                </div>
+                <div class="preview-processed" id="previewProcessed">
+                    <span class="preview-label">Processed</span>
+                    <img id="processedPhoto" src="" alt="Processed">
+                </div>
+            </div>
+            <div class="preview-actions">
+                <button type="button" class="btn-neu btn-reject" onclick="rejectPhoto()">
+                    ✕ Retake
+                </button>
+                <button type="button" class="btn-neu btn-approve" onclick="approvePhoto()">
+                    ✓ Use Photo
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- face-api.js from CDN -->
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-    <!-- Background removal library -->
-    <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/index.umd.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
