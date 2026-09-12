@@ -127,9 +127,13 @@ function setupAddressDropdowns() {
     
     // Specific location input handler
     specificLocation.addEventListener('input', (e) => {
-        e.target.value = e.target.value.toUpperCase();
+        e.target.value = toProperCase(e.target.value);
         updateAddress();
     });
+}
+
+function toProperCase(str) {
+    return str.replace(/\b\w/g, char => char.toUpperCase());
 }
 
 function updateAddress() {
@@ -142,7 +146,7 @@ function updateAddress() {
         const { province, zipcode } = locationData[town] || {};
         // Format as proper case (capitalize each word)
         const address = `${specificLocation}, ${barangay}, ${town}, ${province || ''} ${zipcode || ''}`.trim();
-        addressField.value = address.replace(/\b\w/g, char => char.toUpperCase());
+        addressField.value = toProperCase(address);
     } else {
         addressField.value = '';
     }
