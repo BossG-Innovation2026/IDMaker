@@ -3,8 +3,7 @@ let selectedFile = null;
 let videoStream = null;
 let faceDetectionInterval = null;
 let modelsLoaded = false;
-let originalPhotoData = null;
-let processedPhotoData = null;
+let capturedPhotoData = null;
 
 // Load face-api models on page load
 document.addEventListener('DOMContentLoaded', async () => {
@@ -213,7 +212,7 @@ function updateFaceStatus(text, type) {
     status.className = `face-status ${type}`;
 }
 
-async function capturePhoto() {
+function capturePhoto() {
     const video = document.getElementById('cameraPreview');
     const canvas = document.createElement('canvas');
     
@@ -225,157 +224,29 @@ async function capturePhoto() {
     ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0);
     
+    // Store captured photo
+    capturedPhotoData = canvas.toDataURL('image/jpeg', 0.9);
+    
     // Close camera modal
     closeCameraModal();
     
-    // Store original photo
-    originalPhotoData = canvas.toDataURL('image/jpeg', 0.9);
-    
-    // Show processing modal
-    showProcessingModal('Processing photo...');
-    
-    // Convert to blob for processing
-    canvas.toBlob(async (blob) => {
-        updateProcessingStatus('Removing background...', 30);
-        
-        try {
-            // Try to remove background using canvas-based approach
-            const processedBlob = await removeBackgroundSimple(blob);
-            
-            updateProcessingStatus('Processing complete!', 100);
-            
-            // Store processed photo
-            processedPhotoData = await blobToDataURL(processedBlob);
-            
-            // Show preview modal
-            showPreviewModal();
-            
-        } catch (error) {
-            console.error('Background removal failed:', error);
-            
-            // Fallback - use original photo
-            processedPhotoData = originalPhotoData;
-            
-            // Show preview modal with original only
-            showPreviewModal();
-        }
-    }, 'image/jpeg', 0.9);
-}
-
-// Simple background removal using canvas
-async function removeBackgroundSimple(imageBlob) {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext('2d');
-            
-            // Draw original image
-            ctx.drawImage(img, 0, 0);
-            
-            // Get image data
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-            
-            // Simple background removal based on color similarity to corners
-            const cornerColors = [
-                getPixelColor(data, 0, 0, canvas.width),
-                getPixelColor(data, canvas.width - 1, 0, canvas.width),
-                getPixelColor(data, 0, canvas.height - 1, canvas.width),
-                getPixelColor(data, canvas.width - 1, canvas.height - 1, canvas.width)
-            ];
-            
-            const avgCorner = {
-                r: cornerColors.reduce((s, c) => s + c.r, 0) / 4,
-                g: cornerColors.reduce((s, c) => s + c.g, 0) / 4,
-                b: cornerColors.reduce((s, c) => s + c.b, 0) / 4
-            };
-            
-            // Process each pixel
-            for (let i = 0; i < data.length; i += 4) {
-                const r = data[i];
-                const g = data[i + 1];
-                const b = data[i + 2];
-                
-                // Calculate color distance from corner average
-                const distance = Math.sqrt(
-                    Math.pow(r - avgCorner.r, 2) +
-                    Math.pow(g - avgCorner.g, 2) +
-                    Math.pow(b - avgCorner.b, 2)
-                );
-                
-                // If pixel is similar to background, make it transparent
-                if (distance < 80) {
-                    data[i + 3] = 0; // Set alpha to 0
-                }
-            }
-            
-            // Put modified image data back
-            ctx.putImageData(imageData, 0, 0);
-            
-            // Convert to blob
-            canvas.toBlob((blob) => {
-                resolve(blob);
-            }, 'image/png');
-        };
-        
-        img.onerror = reject;
-        img.src = URL.createObjectURL(imageBlob);
-    });
-}
-
-function getPixelColor(data, x, y, width) {
-    const i = (y * width + x) * 4;
-    return {
-        r: data[i],
-        g: data[i + 1],
-        b: data[i + 2]
-    };
-}
-
-function blobToDataURL(blob) {
-    return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.readAsDataURL(blob);
-    });
-}
-
-function showProcessingModal(message) {
-    const modal = document.getElementById('processingModal');
-    modal.classList.remove('hidden');
-    document.getElementById('processingStatus').textContent = message;
-    document.getElementById('progressFill').style.width = '0%';
-}
-
-function updateProcessingStatus(message, percent) {
-    document.getElementById('processingStatus').textContent = message;
-    document.getElementById('progressFill').style.width = `${percent}%`;
-}
-
-function hideProcessingModal() {
-    document.getElementById('processingModal').classList.add('hidden');
+    // Show preview modal
+    showPreviewModal();
 }
 
 function showPreviewModal() {
-    hideProcessingModal();
-    
     const modal = document.getElementById('previewModal');
     modal.classList.remove('hidden');
-    
-    document.getElementById('originalPhoto').src = originalPhotoData;
-    document.getElementById('processedPhoto').src = processedPhotoData;
+    document.getElementById('capturedPhoto').src = capturedPhotoData;
 }
 
 function approvePhoto() {
-    // Use the processed photo
-    selectedFile = dataURLtoFile(processedPhotoData, 'photo.png');
+    // Convert data URL to file
+    selectedFile = dataURLtoFile(capturedPhotoData, 'photo.jpg');
     
     // Update preview
     const preview = document.getElementById('photoPreview');
-    preview.innerHTML = `<img src="${processedPhotoData}" alt="Student Photo">`;
+    preview.innerHTML = `<img src="${capturedPhotoData}" alt="Student Photo">`;
     
     // Show validation
     showPhotoValidation('✓ Photo approved', 'valid');
@@ -386,8 +257,7 @@ function approvePhoto() {
 
 function rejectPhoto() {
     // Reset
-    originalPhotoData = null;
-    processedPhotoData = null;
+    capturedPhotoData = null;
     
     // Close preview modal
     document.getElementById('previewModal').classList.add('hidden');
