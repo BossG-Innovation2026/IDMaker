@@ -170,8 +170,22 @@
     <!-- Hidden file input for fallback -->
     <input type="file" id="cameraInput" name="photo" accept="image/*" capture="user" hidden>
 
+    <!-- Background Removal Processing Modal -->
+    <div id="processingModal" class="modal hidden">
+        <div class="modal-content processing-content">
+            <div class="processing-spinner"></div>
+            <h3>Processing Photo</h3>
+            <p id="processingStatus">Removing background...</p>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- face-api.js from CDN -->
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <!-- Background removal library -->
+    <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/index.umd.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

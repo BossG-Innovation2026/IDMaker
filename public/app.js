@@ -19,7 +19,6 @@ async function loadModels() {
         console.log('Face detection models loaded');
     } catch (error) {
         console.error('Error loading face detection models:', error);
-        // Fallback - allow camera without face detection
         modelsLoaded = false;
     }
 }
@@ -42,13 +41,8 @@ async function loadClasses() {
 }
 
 function setupEventListeners() {
-    // Form submit
     document.getElementById('studentForm').addEventListener('submit', handleSubmit);
-    
-    // Save to Drive
     document.getElementById('saveBtn').addEventListener('click', saveToDrive);
-    
-    // Capture button
     document.getElementById('captureBtn').addEventListener('click', capturePhoto);
 }
 
@@ -69,11 +63,9 @@ async function openCameraModal() {
         const video = document.getElementById('cameraPreview');
         video.srcObject = videoStream;
         
-        // Start face detection loop
         if (modelsLoaded) {
             startFaceDetection();
         } else {
-            // Allow capture without face detection
             updateFaceStatus('Camera ready (face detection unavailable)', 'warning');
             document.getElementById('captureBtn').disabled = false;
         }
@@ -88,19 +80,16 @@ function closeCameraModal() {
     const modal = document.getElementById('cameraModal');
     modal.classList.add('hidden');
     
-    // Stop camera stream
     if (videoStream) {
         videoStream.getTracks().forEach(track => track.stop());
         videoStream = null;
     }
     
-    // Stop face detection
     if (faceDetectionInterval) {
         clearInterval(faceDetectionInterval);
         faceDetectionInterval = null;
     }
     
-    // Reset checks
     resetFaceChecks();
 }
 
@@ -118,7 +107,6 @@ function startFaceDetection() {
             }))
             .withFaceLandmarks(true);
         
-        // Clear canvas
         const ctx = canvas.getContext('2d');
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
@@ -131,7 +119,6 @@ function startFaceDetection() {
             return;
         }
         
-        // Get the largest face
         const detection = detections.reduce((prev, current) => 
             (prev.detection.box.area > current.detection.box.area) ? prev : current
         );
@@ -140,22 +127,18 @@ function startFaceDetection() {
         const videoWidth = video.videoWidth;
         const videoHeight = video.videoHeight;
         
-        // Calculate face metrics
         const faceCenterX = box.x + box.width / 2;
         const faceCenterY = box.y + box.height / 2;
         const isCentered = Math.abs(faceCenterX - videoWidth / 2) < videoWidth * 0.15;
         const isGoodSize = box.width > videoWidth * 0.15 && box.width < videoWidth * 0.6;
         
-        // Check brightness (simple average)
         const brightness = await checkBrightness(video, box);
         const isGoodBrightness = brightness > 40 && brightness < 220;
         
-        // Draw face box
         ctx.strokeStyle = isCentered && isGoodSize ? '#48bb78' : '#dd6b20';
         ctx.lineWidth = 3;
         ctx.strokeRect(box.x, box.y, box.width, box.height);
         
-        // Draw landmarks
         const landmarks = detection.landmarks;
         ctx.fillStyle = '#667eea';
         const positions = landmarks.positions;
@@ -165,11 +148,9 @@ function startFaceDetection() {
             ctx.fill();
         });
         
-        // Update checks
         const allPassed = isCentered && isGoodSize && isGoodBrightness;
         updateFaceChecks(true, isCentered, isGoodSize, isGoodBrightness);
         
-        // Update guide oval
         const guideOval = document.getElementById('guideOval');
         guideOval.className = 'guide-oval';
         if (allPassed) {
@@ -233,7 +214,7 @@ function updateFaceStatus(text, type) {
     status.className = `face-status ${type}`;
 }
 
-function capturePhoto() {
+async function capturePhoto() {
     const video = document.getElementById('cameraPreview');
     const canvas = document.createElement('canvas');
     
@@ -241,31 +222,93 @@ function capturePhoto() {
     canvas.height = video.videoHeight;
     
     const ctx = canvas.getContext('2d');
-    // Mirror the image
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0);
     
-    // Convert to blob
-    canvas.toBlob((blob) => {
-        // Create file from blob
+    // Close camera modal
+    closeCameraModal();
+    
+    // Show processing modal
+    showProcessingModal('Capturing photo...');
+    
+    canvas.toBlob(async (blob) => {
         const file = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
-        selectedFile = file;
         
-        // Display in preview
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const preview = document.getElementById('photoPreview');
-            preview.innerHTML = `<img src="${e.target.result}" alt="Student Photo">`;
-        };
-        reader.readAsDataURL(file);
+        updateProcessingStatus('Removing background...', 30);
         
-        // Show validation
-        showPhotoValidation('✓ Photo captured successfully', 'valid');
-        
-        // Close modal
-        closeCameraModal();
+        try {
+            // Remove background
+            const processedBlob = await removeBackground(blob);
+            
+            updateProcessingStatus('Processing complete!', 100);
+            
+            // Create processed file
+            selectedFile = new File([processedBlob], 'photo.png', { type: 'image/png' });
+            
+            // Display processed photo
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const preview = document.getElementById('photoPreview');
+                preview.innerHTML = `<img src="${e.target.result}" alt="Student Photo">`;
+            };
+            reader.readAsDataURL(processedBlob);
+            
+            showPhotoValidation('✓ Photo processed (background removed)', 'valid');
+            
+            // Hide processing modal
+            hideProcessingModal();
+        } catch (error) {
+            console.error('Background removal failed:', error);
+            
+            // Fallback to original photo
+            selectedFile = file;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const preview = document.getElementById('photoPreview');
+                preview.innerHTML = `<img src="${e.target.result}" alt="Student Photo">`;
+            };
+            reader.readAsDataURL(file);
+            
+            showPhotoValidation('⚠ Background removal failed, using original', 'warning');
+            hideProcessingModal();
+        }
     }, 'image/jpeg', 0.9);
+}
+
+async function removeBackground(imageBlob) {
+    updateProcessingStatus('Loading AI model...', 10);
+    
+    const imageBitmap = await createImageBitmap(imageBlob);
+    
+    updateProcessingStatus('Analyzing image...', 20);
+    
+    const result = await imglyBackgroundRemoval.removeBackground(imageBlob, {
+        progress: (key, current, total) => {
+            const percent = Math.round((current / total) * 60) + 30;
+            updateProcessingStatus(`Processing: ${key}...`, percent);
+        }
+    });
+    
+    return result;
+}
+
+function showProcessingModal(message) {
+    const modal = document.getElementById('processingModal');
+    modal.classList.remove('hidden');
+    document.getElementById('processingStatus').textContent = message;
+    document.getElementById('progressFill').style.width = '0%';
+}
+
+function updateProcessingStatus(message, percent) {
+    document.getElementById('processingStatus').textContent = message;
+    document.getElementById('progressFill').style.width = `${percent}%`;
+}
+
+function hideProcessingModal() {
+    const modal = document.getElementById('processingModal');
+    modal.classList.add('hidden');
 }
 
 function showPhotoValidation(message, type) {
@@ -345,7 +388,6 @@ function updateIDPreview(student) {
 async function saveToDrive() {
     showStatus('Saving to Google Drive...', 'info');
     
-    // TODO: Implement actual Google Drive save
     setTimeout(() => {
         showStatus('Google Drive integration pending - add credentials to .env', 'info');
     }, 1000);
