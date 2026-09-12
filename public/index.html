@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ID Making App</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <h1>Student ID Maker</h1>
+                <p>Capture data, generate ID, save to Drive</p>
+            </div>
+
+            <form id="studentForm">
+                <!-- Photo Section -->
+                <div class="photo-section">
+                    <div class="photo-preview" id="photoPreview">
+                        <span class="placeholder">📷</span>
+                    </div>
+                    <input type="file" id="cameraInput" name="photo" accept="image/*" capture="user" hidden>
+                    <button type="button" class="btn-neu btn-secondary" onclick="document.getElementById('cameraInput').click()">
+                        Take Photo
+                    </button>
+                </div>
+
+                <!-- Class Selection -->
+                <div class="form-group">
+                    <label>Class *</label>
+                    <select id="classSelect" name="section" required>
+                        <option value="">Select Class</option>
+                    </select>
+                </div>
+
+                <!-- Name Fields -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>First Name *</label>
+                        <input type="text" id="firstName" name="firstName" placeholder="First Name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Middle Name</label>
+                        <input type="text" id="middleName" name="middleName" placeholder="Middle Name">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Last Name *</label>
+                    <input type="text" id="lastName" name="lastName" placeholder="Last Name" required>
+                </div>
+
+                <!-- Other Fields -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Birthday *</label>
+                        <input type="date" id="birthday" name="birthday" required>
+                    </div>
+                    <div class="form-group">
+                        <label>LRN *</label>
+                        <input type="text" id="lrn" name="lrn" placeholder="LRN" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Full Address *</label>
+                    <input type="text" id="address" name="address" placeholder="Full Address" required>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Parent/Guardian *</label>
+                        <input type="text" id="parentName" name="parentName" placeholder="Parent/Guardian Name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Contact *</label>
+                        <input type="tel" id="contactNumber" name="contactNumber" placeholder="Contact Number" required>
+                    </div>
+                </div>
+
+                <!-- Buttons -->
+                <button type="submit" class="btn-neu btn-primary">
+                    Generate ID
+                </button>
+
+                <button type="button" class="btn-neu btn-success hidden" id="saveBtn">
+                    Save to Google Drive
+                </button>
+            </form>
+
+            <!-- Status Message -->
+            <div id="status" class="status hidden"></div>
+
+            <!-- ID Preview -->
+            <div id="idPreview" class="id-preview hidden">
+                <h3>ID Preview</h3>
+                <div class="id-card">
+                    <div class="id-card-header">
+                        <h2>SCHOOL NAME</h2>
+                        <p>Student Identification Card</p>
+                    </div>
+                    <div class="id-card-body">
+                        <div class="id-card-photo" id="idPhoto">
+                            <span class="placeholder">No Photo</span>
+                        </div>
+                        <div class="id-card-info">
+                            <p><strong>Name:</strong> <span id="idName">-</span></p>
+                            <p><strong>Class:</strong> <span id="idClass">-</span></p>
+                            <p><strong>LRN:</strong> <span id="idLRN">-</span></p>
+                            <p><strong>Birthday:</strong> <span id="idBirthday">-</span></p>
+                        </div>
+                    </div>
+                    <div class="id-card-footer">
+                        <p><strong>Address:</strong> <span id="idAddress">-</span></p>
+                        <p><strong>Parent/Guardian:</strong> <span id="idParent">-</span></p>
+                        <p><strong>Contact:</strong> <span id="idContact">-</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

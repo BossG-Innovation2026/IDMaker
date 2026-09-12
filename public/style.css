@@ -1,0 +1,304 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --bg-color: #e0e5ec;
+    --shadow-light: #ffffff;
+    --shadow-dark: #a3b1c6;
+    --primary: #667eea;
+    --primary-dark: #5a67d8;
+    --success: #48bb78;
+    --success-dark: #38a169;
+    --text: #2d3748;
+    --text-light: #718096;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: var(--bg-color);
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    max-width: 450px;
+    margin: 0 auto;
+}
+
+/* Neumorphism Card */
+.card {
+    background: var(--bg-color);
+    border-radius: 20px;
+    padding: 30px;
+    box-shadow: 8px 8px 16px var(--shadow-dark),
+                -8px -8px 16px var(--shadow-light);
+}
+
+/* Header */
+.header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.header h1 {
+    color: var(--primary);
+    font-size: 1.8rem;
+    margin-bottom: 5px;
+    text-shadow: 2px 2px 4px var(--shadow-dark);
+}
+
+.header p {
+    color: var(--text-light);
+    font-size: 0.9rem;
+}
+
+/* Photo Section */
+.photo-section {
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+.photo-preview {
+    width: 130px;
+    height: 130px;
+    border-radius: 50%;
+    background: var(--bg-color);
+    margin: 0 auto 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    box-shadow: inset 5px 5px 10px var(--shadow-dark),
+                inset -5px -5px 10px var(--shadow-light);
+}
+
+.photo-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.photo-preview .placeholder {
+    font-size: 3rem;
+    color: var(--text-light);
+}
+
+/* Neumorphism Buttons */
+.btn-neu {
+    padding: 14px 28px;
+    border: none;
+    border-radius: 12px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 100%;
+    margin-top: 10px;
+}
+
+.btn-neu:active {
+    transform: scale(0.98);
+}
+
+.btn-primary {
+    background: var(--bg-color);
+    color: var(--primary);
+    box-shadow: 5px 5px 10px var(--shadow-dark),
+                -5px -5px 10px var(--shadow-light);
+}
+
+.btn-primary:hover {
+    box-shadow: 3px 3px 6px var(--shadow-dark),
+                -3px -3px 6px var(--shadow-light);
+}
+
+.btn-secondary {
+    background: var(--bg-color);
+    color: var(--text);
+    box-shadow: 5px 5px 10px var(--shadow-dark),
+                -5px -5px 10px var(--shadow-light);
+    width: auto;
+    display: inline-block;
+}
+
+.btn-success {
+    background: var(--bg-color);
+    color: var(--success);
+    box-shadow: 5px 5px 10px var(--shadow-dark),
+                -5px -5px 10px var(--shadow-light);
+}
+
+/* Form Groups */
+.form-group {
+    margin-bottom: 18px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: var(--text);
+    font-size: 0.9rem;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 14px 18px;
+    border: none;
+    border-radius: 12px;
+    font-size: 1rem;
+    background: var(--bg-color);
+    color: var(--text);
+    box-shadow: inset 3px 3px 6px var(--shadow-dark),
+                inset -3px -3px 6px var(--shadow-light);
+    transition: all 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    box-shadow: inset 2px 2px 4px var(--shadow-dark),
+                inset -2px -2px 4px var(--shadow-light);
+}
+
+.form-group input::placeholder {
+    color: var(--text-light);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+}
+
+/* Status Message */
+.status {
+    margin-top: 15px;
+    padding: 14px;
+    border-radius: 12px;
+    text-align: center;
+    font-weight: 500;
+    box-shadow: inset 3px 3px 6px var(--shadow-dark),
+                inset -3px -3px 6px var(--shadow-light);
+}
+
+.status.success {
+    color: var(--success);
+}
+
+.status.info {
+    color: var(--primary);
+}
+
+/* ID Preview */
+.id-preview {
+    margin-top: 25px;
+    padding: 20px;
+    background: var(--bg-color);
+    border-radius: 16px;
+    box-shadow: inset 3px 3px 6px var(--shadow-dark),
+                inset -3px -3px 6px var(--shadow-light);
+}
+
+.id-preview h3 {
+    text-align: center;
+    color: var(--primary);
+    margin-bottom: 15px;
+    font-size: 1rem;
+}
+
+.id-card {
+    background: white;
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 5px 5px 15px var(--shadow-dark),
+                -5px -5px 15px var(--shadow-light);
+}
+
+.id-card-header {
+    text-align: center;
+    border-bottom: 2px solid var(--primary);
+    padding-bottom: 12px;
+    margin-bottom: 15px;
+}
+
+.id-card-header h2 {
+    color: var(--primary);
+    font-size: 1.2rem;
+    letter-spacing: 1px;
+}
+
+.id-card-header p {
+    color: var(--text-light);
+    font-size: 0.8rem;
+    margin-top: 3px;
+}
+
+.id-card-body {
+    display: flex;
+    gap: 15px;
+}
+
+.id-card-photo {
+    width: 90px;
+    height: 90px;
+    border-radius: 12px;
+    background: var(--bg-color);
+    overflow: hidden;
+    flex-shrink: 0;
+    box-shadow: inset 2px 2px 4px var(--shadow-dark),
+                inset -2px -2px 4px var(--shadow-light);
+}
+
+.id-card-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.id-card-info {
+    flex: 1;
+    font-size: 0.85rem;
+    line-height: 1.6;
+}
+
+.id-card-info p {
+    margin-bottom: 4px;
+}
+
+.id-card-info strong {
+    color: var(--text);
+}
+
+.id-card-footer {
+    margin-top: 15px;
+    padding-top: 12px;
+    border-top: 1px solid #eee;
+    font-size: 0.8rem;
+    line-height: 1.6;
+    color: var(--text);
+}
+
+.id-card-footer p {
+    margin-bottom: 3px;
+}
+
+/* Utility */
+.hidden {
+    display: none;
+}
+
+/* Responsive */
+@media (max-width: 400px) {
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .card {
+        padding: 20px;
+    }
+}
