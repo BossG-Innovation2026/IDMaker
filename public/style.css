@@ -246,6 +246,41 @@ body {
     gap: 15px;
 }
 
+/* Map Modal */
+.map-modal-content {
+    max-width: 400px;
+    max-height: 90vh;
+}
+
+#mapContainer {
+    width: 100%;
+    height: 300px;
+    background: #ddd;
+}
+
+.map-info {
+    padding: 12px 20px;
+    text-align: center;
+    background: var(--bg-color);
+}
+
+.map-info p {
+    margin: 4px 0;
+    font-size: 0.85rem;
+    color: var(--text);
+}
+
+.map-address {
+    color: var(--primary) !important;
+    font-weight: 500;
+}
+
+.map-actions {
+    display: flex;
+    gap: 10px;
+    padding: 0 20px 20px;
+}
+
 /* Field Validation */
 .field-validation {
     margin-top: 5px;
@@ -278,13 +313,19 @@ body {
     text-align: center;
 }
 
-/* Location Button */
-.btn-location {
+/* Location Buttons */
+.location-buttons {
+    display: flex;
+    gap: 10px;
     margin-top: 8px;
-    padding: 10px 16px;
+}
+
+.btn-location {
+    flex: 1;
+    padding: 10px 12px;
     border: none;
     border-radius: 10px;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     font-weight: 500;
     cursor: pointer;
     background: var(--bg-color);
@@ -292,7 +333,6 @@ body {
     box-shadow: 3px 3px 6px var(--shadow-dark),
                 -3px -3px 6px var(--shadow-light);
     transition: all 0.2s ease;
-    width: 100%;
 }
 
 .btn-location:hover {

@@ -4,6 +4,9 @@ let videoStream = null;
 let faceDetectionInterval = null;
 let modelsLoaded = false;
 let capturedPhotoData = null;
+let map = null;
+let marker = null;
+let selectedMapLocation = null;
 
 // Load face-api models on page load
 document.addEventListener('DOMContentLoaded', async () => {
@@ -55,6 +58,49 @@ function setupEventListeners() {
     // LRN validation
     setupLRNValidation();
     
+    // Birthday format display
+    setupBirthdayDisplay();
+    
+    // GPS and Map location
+    setupLocationButtons();
+}
+
+// Auto caps lock for text fields
+function setupCapsLock() {
+    const textFields = ['firstName', 'middleName', 'lastName', 'address', 'parentName'];
+    textFields.forEach(id => {
+        const field = document.getElementById(id);
+        if (field) {
+            field.addEventListener('input', (e) => {
+                e.target.value = e.target.value.toUpperCase();
+            });
+        }
+    });
+}
+
+// Phone number formatting (09xx-xxx-xxxx)
+function setupPhoneFormat() {
+    const phoneField = document.getElementById('contactNumber');
+    if (phoneField) {
+        phoneField.addEventListener('input', (e) => {
+            let value = e.target.value.replace(/\D/g, '');
+            
+            if (value.length > 11) {
+                value = value.substring(0, 11);
+            }
+            
+            if (value.length > 4) {
+                value = value.substring(0, 4) + '-' + value.substring(4);
+            }
+            if (value.length > 8) {
+                value = value.substring(0, 8) + '-' + value.substring(8);
+            }
+            
+            e.target.value = value;
+        });
+    }
+}
+
 // LRN validation (12 digits only)
 function setupLRNValidation() {
     const lrnField = document.getElementById('lrn');
@@ -62,7 +108,6 @@ function setupLRNValidation() {
     
     if (lrnField && lrnValidation) {
         lrnField.addEventListener('input', (e) => {
-            // Only allow numbers
             e.target.value = e.target.value.replace(/\D/g, '');
             
             const value = e.target.value;
@@ -91,51 +136,6 @@ function setupLRNValidation() {
 }
 
 // Birthday format display
-    setupBirthdayDisplay();
-    
-    // GPS location
-    setupGPSLocation();
-}
-
-// Auto caps lock for text fields
-function setupCapsLock() {
-    const textFields = ['firstName', 'middleName', 'lastName', 'address', 'parentName'];
-    textFields.forEach(id => {
-        const field = document.getElementById(id);
-        if (field) {
-            field.addEventListener('input', (e) => {
-                e.target.value = e.target.value.toUpperCase();
-            });
-        }
-    });
-}
-
-// Phone number formatting (09xx-xxx-xxxx)
-function setupPhoneFormat() {
-    const phoneField = document.getElementById('contactNumber');
-    if (phoneField) {
-        phoneField.addEventListener('input', (e) => {
-            let value = e.target.value.replace(/\D/g, '');
-            
-            // Limit to 11 digits
-            if (value.length > 11) {
-                value = value.substring(0, 11);
-            }
-            
-            // Format as 09xx-xxx-xxxx
-            if (value.length > 4) {
-                value = value.substring(0, 4) + '-' + value.substring(4);
-            }
-            if (value.length > 8) {
-                value = value.substring(0, 8) + '-' + value.substring(8);
-            }
-            
-            e.target.value = value;
-        });
-    }
-}
-
-// Birthday format display
 function setupBirthdayDisplay() {
     const birthdayField = document.getElementById('birthday');
     const display = document.getElementById('birthdayDisplay');
@@ -151,66 +151,62 @@ function setupBirthdayDisplay() {
     }
 }
 
-// GPS location
-function setupGPSLocation() {
+// Location buttons (GPS and Map)
+function setupLocationButtons() {
     const addressField = document.getElementById('address');
     if (addressField) {
-        // Add a button next to address field
-        const locationBtn = document.createElement('button');
-        locationBtn.type = 'button';
-        locationBtn.className = 'btn-location';
-        locationBtn.innerHTML = '📍 Use My Location';
-        locationBtn.onclick = getCurrentLocation;
-        addressField.parentNode.appendChild(locationBtn);
+        // Create buttons container
+        const btnContainer = document.createElement('div');
+        btnContainer.className = 'location-buttons';
+        
+        // GPS button
+        const gpsBtn = document.createElement('button');
+        gpsBtn.type = 'button';
+        gpsBtn.className = 'btn-location';
+        gpsBtn.innerHTML = '📍 Use My Location';
+        gpsBtn.onclick = getCurrentLocation;
+        
+        // Map button
+        const mapBtn = document.createElement('button');
+        mapBtn.type = 'button';
+        mapBtn.className = 'btn-location';
+        mapBtn.innerHTML = '🗺️ Select on Map';
+        mapBtn.onclick = openMapModal;
+        
+        btnContainer.appendChild(gpsBtn);
+        btnContainer.appendChild(mapBtn);
+        addressField.parentNode.appendChild(btnContainer);
     }
 }
 
+// GPS Location
 function getCurrentLocation() {
     const addressField = document.getElementById('address');
-    const locationBtn = document.querySelector('.btn-location');
+    const locationBtns = document.querySelectorAll('.btn-location');
     
     if (!navigator.geolocation) {
         showStatus('Geolocation is not supported by your browser', 'info');
         return;
     }
     
-    locationBtn.innerHTML = '⏳ Getting location...';
-    locationBtn.disabled = true;
+    locationBtns.forEach(btn => btn.disabled = true);
+    locationBtns[0].innerHTML = '⏳ Getting location...';
     
     navigator.geolocation.getCurrentPosition(
         async (position) => {
             const { latitude, longitude } = position.coords;
+            const address = await reverseGeocode(latitude, longitude);
             
-            try {
-                // Use free geocoding API
-                const response = await fetch(
-                    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
-                );
-                const data = await response.json();
-                
-                if (data.display_name) {
-                    // Extract address parts
-                    const address = data.address;
-                    const parts = [
-                        address.house_number,
-                        address.road,
-                        address.village || address.suburb || address.city_district,
-                        address.city || address.municipality,
-                        address.state || address.province,
-                        address.postcode
-                    ].filter(Boolean);
-                    
-                    addressField.value = parts.join(', ').toUpperCase();
-                    showStatus('✓ Location acquired', 'valid');
-                }
-            } catch (error) {
-                // Fallback to coordinates
+            if (address) {
+                addressField.value = address;
+                showStatus('✓ Location acquired', 'valid');
+            } else {
                 addressField.value = `LAT: ${latitude.toFixed(6)}, LONG: ${longitude.toFixed(6)}`;
                 showStatus('📍 Coordinates added (address lookup failed)', 'warning');
             }
             
-            locationBtn.innerHTML = '📍 Use My Location';
-            locationBtn.disabled = false;
+            locationBtns.forEach(btn => btn.disabled = false);
+            locationBtns[0].innerHTML = '📍 Use My Location';
         },
         (error) => {
             let message = 'Unable to get location';
@@ -226,11 +222,94 @@ function getCurrentLocation() {
                     break;
             }
             showStatus(message, 'info');
-            locationBtn.innerHTML = '📍 Use My Location';
-            locationBtn.disabled = false;
+            locationBtns.forEach(btn => btn.disabled = false);
+            locationBtns[0].innerHTML = '📍 Use My Location';
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
+}
+
+// Reverse geocode to get Town and Province format
+async function reverseGeocode(lat, lon) {
+    try {
+        const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`
+        );
+        const data = await response.json();
+        
+        if (data.address) {
+            const addr = data.address;
+            const town = addr.town || addr.city || addr.municipality || addr.village || addr.suburb || '';
+            const province = addr.state || addr.province || '';
+            
+            // Format: Town, Province
+            if (town && province) {
+                return `${town}, ${province}`.toUpperCase();
+            } else if (town) {
+                return town.toUpperCase();
+            } else if (province) {
+                return province.toUpperCase();
+            }
+        }
+    } catch (error) {
+        console.error('Reverse geocode error:', error);
+    }
+    return null;
+}
+
+// Map Modal Functions
+function openMapModal() {
+    const modal = document.getElementById('mapModal');
+    modal.classList.remove('hidden');
+    
+    // Initialize map if not already done
+    if (!map) {
+        // Default to Philippines center
+        map = L.map('mapContainer').setView([12.8797, 121.7740], 6);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+        
+        // Click on map to select location
+        map.on('click', async (e) => {
+            const { lat, lng } = e.latlng;
+            
+            // Place or move marker
+            if (marker) {
+                marker.setLatLng([lat, lng]);
+            } else {
+                marker = L.marker([lat, lng]).addTo(map);
+            }
+            
+            // Update coords display
+            document.getElementById('mapCoords').textContent = `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`;
+            
+            // Reverse geocode
+            const address = await reverseGeocode(lat, lng);
+            document.getElementById('mapAddress').textContent = address || 'Address not found';
+            
+            selectedMapLocation = { lat, lng, address };
+            document.getElementById('confirmMapBtn').disabled = false;
+        });
+    }
+    
+    // Invalidate size to fix map rendering
+    setTimeout(() => map.invalidateSize(), 100);
+}
+
+function closeMapModal() {
+    document.getElementById('mapModal').classList.add('hidden');
+    selectedMapLocation = null;
+    document.getElementById('confirmMapBtn').disabled = true;
+}
+
+function confirmMapLocation() {
+    if (selectedMapLocation && selectedMapLocation.address) {
+        document.getElementById('address').value = selectedMapLocation.address;
+        showStatus('✓ Location selected from map', 'valid');
+    }
+    closeMapModal();
 }
 
 // Camera Modal Functions
@@ -410,13 +489,9 @@ function capturePhoto() {
     ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0);
     
-    // Store captured photo
     capturedPhotoData = canvas.toDataURL('image/jpeg', 0.9);
     
-    // Close camera modal
     closeCameraModal();
-    
-    // Show preview modal
     showPreviewModal();
 }
 
@@ -427,28 +502,18 @@ function showPreviewModal() {
 }
 
 function approvePhoto() {
-    // Convert data URL to file
     selectedFile = dataURLtoFile(capturedPhotoData, 'photo.jpg');
     
-    // Update preview
     const preview = document.getElementById('photoPreview');
     preview.innerHTML = `<img src="${capturedPhotoData}" alt="Student Photo">`;
     
-    // Show validation
     showPhotoValidation('✓ Photo approved', 'valid');
-    
-    // Close preview modal
     document.getElementById('previewModal').classList.add('hidden');
 }
 
 function rejectPhoto() {
-    // Reset
     capturedPhotoData = null;
-    
-    // Close preview modal
     document.getElementById('previewModal').classList.add('hidden');
-    
-    // Open camera again
     openCameraModal();
 }
 
