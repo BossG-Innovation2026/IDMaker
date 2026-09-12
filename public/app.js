@@ -82,7 +82,6 @@ async function loadClasses() {
 
 function setupEventListeners() {
     document.getElementById('studentForm').addEventListener('submit', handleSubmit);
-    document.getElementById('saveBtn').addEventListener('click', saveToDrive);
     document.getElementById('captureBtn').addEventListener('click', capturePhoto);
     
     // Setup form features

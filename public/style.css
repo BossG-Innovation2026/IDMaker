@@ -293,6 +293,8 @@ body {
     background: var(--bg-color) !important;
     color: var(--primary) !important;
     font-weight: 500;
+    box-shadow: inset 3px 3px 6px var(--shadow-dark),
+                inset -3px -3px 6px var(--shadow-light) !important;
 }
 
 /* Download Section */
@@ -553,7 +555,8 @@ body {
     border-radius: 20px;
     width: 100%;
     max-width: 400px;
-    overflow: hidden;
+    max-height: 90vh;
+    overflow-y: auto;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
@@ -676,6 +679,8 @@ body {
 /* Camera Controls */
 .camera-controls {
     padding: 15px 20px 20px;
+    position: relative;
+    z-index: 10;
 }
 
 .face-checks {
