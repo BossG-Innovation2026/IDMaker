@@ -281,6 +281,48 @@ body {
     padding: 0 20px 20px;
 }
 
+/* Auto Address Field */
+.auto-address {
+    background: var(--bg-color) !important;
+    color: var(--primary) !important;
+    font-weight: 500;
+}
+
+/* Map Modal */
+.map-modal-content {
+    max-width: 400px;
+    max-height: 90vh;
+}
+
+#mapContainer {
+    width: 100%;
+    height: 300px;
+    background: #ddd;
+}
+
+.map-info {
+    padding: 12px 20px;
+    text-align: center;
+    background: var(--bg-color);
+}
+
+.map-info p {
+    margin: 4px 0;
+    font-size: 0.85rem;
+    color: var(--text);
+}
+
+.map-address {
+    color: var(--primary) !important;
+    font-weight: 500;
+}
+
+.map-actions {
+    display: flex;
+    gap: 10px;
+    padding: 0 20px 20px;
+}
+
 /* Field Validation */
 .field-validation {
     margin-top: 5px;

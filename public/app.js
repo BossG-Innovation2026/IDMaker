@@ -4,11 +4,96 @@ let videoStream = null;
 let faceDetectionInterval = null;
 let modelsLoaded = false;
 let capturedPhotoData = null;
-let map = null;
-let marker = null;
-let selectedMapLocation = null;
 
-// Load face-api models on page load
+// Barangay data for each town
+const barangays = {
+    'Cabiao': [
+        'Bagong Sikat', 'Bagong Buhay', 'Bocalet', 'Bulacan', 'Burrola',
+        'Calanglang', 'Caliliwan', 'Calulutan', 'Camanacsacan', 'Canayongan',
+        'Cansinala', 'Capalangan', 'Capataan', 'Colay Bato', 'Consuelo',
+        'Culiat', 'Dulong Malabon', 'Dulong Ilog', 'Hilera', 'Hilumatic',
+        'Lambakin', 'Langla', 'Lany', 'Latip', 'Liberator',
+        'Malacabihan', 'Malaruhatan', 'Maligaya', 'Mambungon', 'Maragol',
+        'Mataas Na Kahoy', 'Maturanoc', 'Maybubon', 'Nagiralban', 'Nanadakan',
+        'Ostas', 'Pacalapac', 'Padre Crisostomo', 'Pagsanahan', 'Paliparan',
+        'Pamliwan', 'Pamumbo', 'Panacsacan', 'Parangliito', 'Paruldumercao',
+        'Paso De Blas', 'Pasong Kawayan', 'Pinipahan', 'Poblacion', 'Pulo',
+        'Pulong Bayabas', 'Pulong Mathuli', 'Pulong Palazan', 'San Agustin',
+        'San Andres', 'San Basilio', 'San Isidro', 'San Josecrus Nor',
+        'San Manuel', 'San Miguel', 'San Nicolas', 'San Pablo', 'San Patricio',
+        'San Roque', 'Santa Cruz', 'Santa Inocencio', 'Santa Maria',
+        'Santiago', 'Santo Cristo', 'Santo Niño', 'Sapang Kawayan', 'Sinaulang',
+        'Talang', 'Tampok', 'Tibag', 'Tibagan Indio La喜', 'Tibagan',
+        'Tungkod', 'Tikiw'
+    ],
+    'San Isidro': [
+        'Agupos', 'Babatbamon', 'Bagong Pagasa', 'Bancal', 'Binalonan',
+        'Bolboc', 'Buliran', 'Bulvalto', 'Cabanatuan', 'Calawiten',
+        'Cancap', 'Canculong', 'Catcunan', 'Catablingan', 'Chavit',
+        'Consuelo', 'Duplicado', 'Escaro', 'Fregoso', 'Gaya',
+        'Ginintingan', 'Guadalupe', 'Hilera', 'Hilumatic', 'Imelda',
+        'Inmalos', 'Kinalangayan', 'La Fuente', 'Labak', 'Lagare',
+        'Lambakin', 'Langlangca', 'Lanig', 'Lapi', 'Llanera',
+        'Lone Central', 'Mabini', 'Macarse', 'Maestrosa', 'Maligaya',
+        'Manaul', 'Maragol', 'Mataas Na Kahoy', 'Mayamot', 'Pacambaran',
+        'Pancasila', 'Pandang Bato', 'Panghulo', 'Parang', 'Pasong Bangka',
+        'Pinili', 'Poblacion', 'Pulo', 'Pulong Bayabas', 'Pulong Gubat',
+        'Pulong Matuli', 'San Bonifacio', 'San Fernando', 'San Gregorio',
+        'San Isidro', 'San Josef', 'San Juan', 'San Mateo', 'San Miguel',
+        'San Nicolas', 'San Pablo', 'San Patricio', 'San Roque', 'San Vicente',
+        'Santa Cruz', 'Santa Inocencio', 'Santa Maria', 'Santiago',
+        'Santo Cristo', 'Santo Niño', 'Sapang', 'Tampalakan', 'Tampok',
+        'Tibag', 'Tikio', 'Tuburan', 'Tungkod', 'Viga'
+    ],
+    'San Antonio': [
+        'Bancal', 'Buliran', 'Bulvalto', 'Cabanatuan', 'Calawitan',
+        'Cancap', 'Canculong', 'Catcunan', 'Catablingan', 'Chavit',
+        'Consuelo', 'Duplicado', 'Escaro', 'Fregoso', 'Gaya',
+        'Ginintingan', 'Guadalupe', 'Hilera', 'Hilumatic', 'Imelda',
+        'Inmalos', 'Kinalangayan', 'La Fuente', 'Labak', 'Lagare',
+        'Lambakin', 'Langlangca', 'Lanig', 'Lapi', 'Llanera',
+        'Lone Central', 'Mabini', 'Macarse', 'Maestrosa', 'Maligaya',
+        'Manaul', 'Maragol', 'Mataas Na Kahoy', 'Mayamot', 'Pacambaran',
+        'Pancasila', 'Pandang Bato', 'Panghulo', 'Parang', 'Pasong Bangka',
+        'Pinili', 'Poblacion', 'Pulo', 'Pulong Bayabas', 'Pulong Gubat',
+        'Pulong Matuli', 'San Bonifacio', 'San Fernando', 'San Gregorio',
+        'San Isidro', 'San Josef', 'San Juan', 'San Mateo', 'San Miguel',
+        'San Nicolas', 'San Pablo', 'San Patricio', 'San Roque', 'San Vicente',
+        'Santa Cruz', 'Santa Inocencio', 'Santa Maria', 'Santiago',
+        'Santo Cristo', 'Santo Niño', 'Sapang', 'Tampalakan', 'Tampok',
+        'Tibag', 'Tikio', 'Tuburan', 'Tungkod', 'Viga'
+    ],
+    'Arayat': [
+        'Acutas', 'Alua', 'Amo', 'Baliti', 'Bayasong',
+        'Beningan', 'Biring Biring', 'Buensuceso', 'Buliran', 'Cadanglaan',
+        'Calantipayan', 'Cama Juan', 'Camias', 'Dconton', 'Dolores',
+        'Inararo', 'Jalung', 'Lacmit', 'Lacquios', 'Lambalag',
+        'Lamutak', 'Langan', 'Lara', 'Lusutan', 'Mabalacat',
+        'Macabakli', 'Magsaysay', 'Malatap', 'Malinao', 'Mapanaso',
+        'Marungko', 'Masamat', 'Maslao', 'Mawaksi', 'Mighty',
+        'Muir', 'Nabuclod', 'Pabalasan', 'Padiw', 'Palanas',
+        'Pangatlan', 'Panipuan', 'Parcutela', 'Patling', 'PobExt',
+        'Poblacion', 'Putat', 'Salbac', 'San Andres', 'San Agustin Norte',
+        'San Agustin Sur', 'San Antonio', 'San Basilio', 'San Isidro',
+        'San Jose', 'San Juan Bautista', 'San Lorenzo', 'San Miguel',
+        'San Nicolas', 'San Nicolas Balas', 'San Pedro', 'San Roque',
+        'San Vicente', 'Santa Cruz', 'Santa Maria', 'Santiago',
+        'Santo Niño', 'Santo Rosario', 'Sapang Biabas', 'Sapang Uwak',
+        'Sapang Yunglo', 'Tabalacsan', 'Talamiti', 'Talimunducan',
+        'Tambo', 'Tangi', 'Tibay', 'Tinang', 'Vizal San Pablo',
+        'Vizal Santo Cristo', 'Vizal Santa Cruz'
+    ]
+};
+
+// Province and zipcode mapping
+const locationData = {
+    'Cabiao': { province: 'Nueva Ecija', zipcode: '3107' },
+    'San Isidro': { province: 'Nueva Ecija', zipcode: '3106' },
+    'San Antonio': { province: 'Nueva Ecija', zipcode: '3108' },
+    'Arayat': { province: 'Pampanga', zipcode: '2012' }
+};
+
+// Load on page load
 document.addEventListener('DOMContentLoaded', async () => {
     await loadModels();
     await loadClasses();
@@ -49,25 +134,71 @@ function setupEventListeners() {
     document.getElementById('saveBtn').addEventListener('click', saveToDrive);
     document.getElementById('captureBtn').addEventListener('click', capturePhoto);
     
-    // Auto caps lock for text fields
+    // Setup form features
     setupCapsLock();
-    
-    // Phone number formatting
     setupPhoneFormat();
-    
-    // LRN validation
     setupLRNValidation();
-    
-    // Birthday format display
     setupBirthdayDisplay();
+    setupAddressDropdowns();
+}
+
+// Address dropdowns
+function setupAddressDropdowns() {
+    const townSelect = document.getElementById('town');
+    const barangaySelect = document.getElementById('barangay');
+    const specificLocation = document.getElementById('specificLocation');
     
-    // GPS and Map location
-    setupLocationButtons();
+    // Town change handler
+    townSelect.addEventListener('change', () => {
+        const town = townSelect.value;
+        
+        // Clear barangay dropdown
+        barangaySelect.innerHTML = '<option value="">Select Barangay</option>';
+        
+        if (town && barangays[town]) {
+            barangaySelect.disabled = false;
+            barangays[town].forEach(brgy => {
+                const option = document.createElement('option');
+                option.value = brgy;
+                option.textContent = brgy;
+                barangaySelect.appendChild(option);
+            });
+        } else {
+            barangaySelect.disabled = true;
+        }
+        
+        updateAddress();
+    });
+    
+    // Barangay change handler
+    barangaySelect.addEventListener('change', () => {
+        updateAddress();
+    });
+    
+    // Specific location input handler
+    specificLocation.addEventListener('input', (e) => {
+        e.target.value = e.target.value.toUpperCase();
+        updateAddress();
+    });
+}
+
+function updateAddress() {
+    const town = document.getElementById('town').value;
+    const barangay = document.getElementById('barangay').value;
+    const specificLocation = document.getElementById('specificLocation').value;
+    const addressField = document.getElementById('address');
+    
+    if (town && barangay && specificLocation) {
+        const { province, zipcode } = locationData[town] || {};
+        addressField.value = `${specificLocation}, ${barangay}, ${town}, ${province || ''} ${zipcode || ''}`.trim();
+    } else {
+        addressField.value = '';
+    }
 }
 
 // Auto caps lock for text fields
 function setupCapsLock() {
-    const textFields = ['firstName', 'middleName', 'lastName', 'address', 'parentName'];
+    const textFields = ['firstName', 'middleName', 'lastName', 'parentName'];
     textFields.forEach(id => {
         const field = document.getElementById(id);
         if (field) {
@@ -149,180 +280,6 @@ function setupBirthdayDisplay() {
             }
         });
     }
-}
-
-// Location buttons (GPS and Map)
-function setupLocationButtons() {
-    const addressField = document.getElementById('address');
-    if (addressField) {
-        // Create buttons container
-        const btnContainer = document.createElement('div');
-        btnContainer.className = 'location-buttons';
-        
-        // GPS button
-        const gpsBtn = document.createElement('button');
-        gpsBtn.type = 'button';
-        gpsBtn.className = 'btn-location';
-        gpsBtn.innerHTML = '📍 Use My Location';
-        gpsBtn.onclick = getCurrentLocation;
-        
-        // Map button
-        const mapBtn = document.createElement('button');
-        mapBtn.type = 'button';
-        mapBtn.className = 'btn-location';
-        mapBtn.innerHTML = '🗺️ Select on Map';
-        mapBtn.onclick = openMapModal;
-        
-        btnContainer.appendChild(gpsBtn);
-        btnContainer.appendChild(mapBtn);
-        addressField.parentNode.appendChild(btnContainer);
-    }
-}
-
-// GPS Location
-function getCurrentLocation() {
-    const addressField = document.getElementById('address');
-    const locationBtns = document.querySelectorAll('.btn-location');
-    
-    if (!navigator.geolocation) {
-        showStatus('Geolocation is not supported by your browser', 'info');
-        return;
-    }
-    
-    locationBtns.forEach(btn => btn.disabled = true);
-    locationBtns[0].innerHTML = '⏳ Getting location...';
-    
-    navigator.geolocation.getCurrentPosition(
-        async (position) => {
-            const { latitude, longitude } = position.coords;
-            const address = await reverseGeocode(latitude, longitude);
-            
-            if (address) {
-                addressField.value = address;
-                showStatus('✓ Location acquired', 'valid');
-            } else {
-                addressField.value = `LAT: ${latitude.toFixed(6)}, LONG: ${longitude.toFixed(6)}`;
-                showStatus('📍 Coordinates added (address lookup failed)', 'warning');
-            }
-            
-            locationBtns.forEach(btn => btn.disabled = false);
-            locationBtns[0].innerHTML = '📍 Use My Location';
-        },
-        (error) => {
-            let message = 'Unable to get location';
-            switch(error.code) {
-                case error.PERMISSION_DENIED:
-                    message = 'Location permission denied';
-                    break;
-                case error.POSITION_UNAVAILABLE:
-                    message = 'Location unavailable';
-                    break;
-                case error.TIMEOUT:
-                    message = 'Location request timed out';
-                    break;
-            }
-            showStatus(message, 'info');
-            locationBtns.forEach(btn => btn.disabled = false);
-            locationBtns[0].innerHTML = '📍 Use My Location';
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
-}
-
-// Reverse geocode to get detailed address format
-async function reverseGeocode(lat, lon) {
-    try {
-        const response = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1`
-        );
-        const data = await response.json();
-        
-        if (data.address) {
-            const addr = data.address;
-            
-            // Line 1: Purok, Street or Subdivision
-            const purok = addr.purok || addr.hamlet || '';
-            const street = addr.road || addr.street || '';
-            const subdivision = addr.subdivision || addr.neighbourhood || '';
-            
-            let line1Parts = [purok, street, subdivision].filter(Boolean);
-            let line1 = line1Parts.length > 0 ? line1Parts.join(', ') : '';
-            
-            // Line 2: Barangay, Town, Province, Zipcode
-            const barangay = addr.village || addr.quarter || addr.city_district || '';
-            const town = addr.town || addr.city || addr.municipality || '';
-            const province = addr.state || addr.province || '';
-            const zipcode = addr.postcode || '';
-            
-            let line2Parts = [barangay, town, province, zipcode].filter(Boolean);
-            let line2 = line2Parts.join(', ');
-            
-            // Format: Line1, Line2
-            if (line1 && line2) {
-                return `${line1.toUpperCase()}, ${line2.toUpperCase()}`;
-            } else if (line2) {
-                return line2.toUpperCase();
-            }
-        }
-    } catch (error) {
-        console.error('Reverse geocode error:', error);
-    }
-    return null;
-}
-
-// Map Modal Functions
-function openMapModal() {
-    const modal = document.getElementById('mapModal');
-    modal.classList.remove('hidden');
-    
-    // Initialize map if not already done
-    if (!map) {
-        // Default to Philippines center
-        map = L.map('mapContainer').setView([12.8797, 121.7740], 6);
-        
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
-        
-        // Click on map to select location
-        map.on('click', async (e) => {
-            const { lat, lng } = e.latlng;
-            
-            // Place or move marker
-            if (marker) {
-                marker.setLatLng([lat, lng]);
-            } else {
-                marker = L.marker([lat, lng]).addTo(map);
-            }
-            
-            // Update coords display
-            document.getElementById('mapCoords').textContent = `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`;
-            
-            // Reverse geocode
-            const address = await reverseGeocode(lat, lng);
-            document.getElementById('mapAddress').textContent = address || 'Address not found';
-            
-            selectedMapLocation = { lat, lng, address };
-            document.getElementById('confirmMapBtn').disabled = !address;
-        });
-    }
-    
-    // Invalidate size to fix map rendering
-    setTimeout(() => map.invalidateSize(), 100);
-}
-
-function closeMapModal() {
-    document.getElementById('mapModal').classList.add('hidden');
-    selectedMapLocation = null;
-    document.getElementById('confirmMapBtn').disabled = true;
-}
-
-function confirmMapLocation() {
-    if (selectedMapLocation && selectedMapLocation.address) {
-        document.getElementById('address').value = selectedMapLocation.address;
-        showStatus('✓ Location selected from map', 'valid');
-    }
-    closeMapModal();
 }
 
 // Camera Modal Functions

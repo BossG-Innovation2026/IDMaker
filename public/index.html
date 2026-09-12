@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ID Making App</title>
     <link rel="stylesheet" href="style.css">
-    <!-- Leaflet Map CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 </head>
 <body>
     <div class="container">
@@ -68,8 +66,31 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Full Address *</label>
-                    <input type="text" id="address" name="address" placeholder="Full Address" required>
+                    <label>Town *</label>
+                    <select id="town" name="town" required>
+                        <option value="">Select Town</option>
+                        <option value="Cabiao">Cabiao</option>
+                        <option value="San Isidro">San Isidro</option>
+                        <option value="San Antonio">San Antonio</option>
+                        <option value="Arayat">Arayat</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Barangay *</label>
+                    <select id="barangay" name="barangay" required disabled>
+                        <option value="">Select Town first</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Specific Location *</label>
+                    <input type="text" id="specificLocation" name="specificLocation" placeholder="Purok, Street, Sitio, or Subdivision" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Full Address (Auto-generated)</label>
+                    <input type="text" id="address" name="address" readonly class="auto-address">
                 </div>
 
                 <div class="form-row">
@@ -194,36 +215,11 @@
         </div>
     </div>
 
-    <!-- Map Selection Modal -->
-    <div id="mapModal" class="modal hidden">
-        <div class="modal-content map-modal-content">
-            <div class="modal-header">
-                <h2>📍 Select Location</h2>
-                <button type="button" class="close-btn" onclick="closeMapModal()">✕</button>
-            </div>
-            <div id="mapContainer"></div>
-            <div class="map-info">
-                <p id="mapCoords">Click on the map to select location</p>
-                <p id="mapAddress" class="map-address"></p>
-            </div>
-            <div class="map-actions">
-                <button type="button" class="btn-neu btn-reject" onclick="closeMapModal()">
-                    Cancel
-                </button>
-                <button type="button" class="btn-neu btn-approve" id="confirmMapBtn" onclick="confirmMapLocation()" disabled>
-                    ✓ Use This Location
-                </button>
-            </div>
-        </div>
-    </div>
-
     <!-- Hidden file input for fallback -->
     <input type="file" id="cameraInput" name="photo" accept="image/*" capture="user" hidden>
 
     <!-- face-api.js from CDN -->
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-    <!-- Leaflet Map JS -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
