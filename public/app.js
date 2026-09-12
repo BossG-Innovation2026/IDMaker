@@ -58,7 +58,7 @@ async function loadModels() {
         modelsLoaded = true;
         console.log('Face detection models loaded');
     } catch (error) {
-        console.error('Error loading face detection models:', error);
+        console.warn('Face detection models failed to load:', error);
         modelsLoaded = false;
     }
 }
@@ -252,11 +252,14 @@ async function openCameraModal() {
         const video = document.getElementById('cameraPreview');
         video.srcObject = videoStream;
         
+        // Always enable capture button
+        document.getElementById('captureBtn').disabled = false;
+        
+        // Start face detection if available (optional enhancement)
         if (modelsLoaded) {
             startFaceDetection();
         } else {
-            updateFaceStatus('Camera ready (face detection unavailable)', 'warning');
-            document.getElementById('captureBtn').disabled = false;
+            updateFaceStatus('Camera ready - position face in center', 'warning');
         }
     } catch (error) {
         console.error('Error accessing camera:', error);
@@ -303,8 +306,7 @@ function startFaceDetection() {
         
         if (detections.length === 0) {
             updateFaceChecks(false, false, false, false);
-            updateFaceStatus('No face detected', 'error');
-            document.getElementById('captureBtn').disabled = true;
+            updateFaceStatus('No face detected - position face in frame', 'warning');
             return;
         }
         
@@ -342,14 +344,11 @@ function startFaceDetection() {
         if (allPassed) {
             guideOval.classList.add('detected', 'centered');
             updateFaceStatus('Perfect! Ready to capture', 'success');
-            document.getElementById('captureBtn').disabled = false;
         } else if (isCentered && isGoodSize) {
             guideOval.classList.add('warning');
-            updateFaceStatus('Adjust lighting', 'warning');
-            document.getElementById('captureBtn').disabled = false;
+            updateFaceStatus('Good - tap Capture when ready', 'warning');
         } else {
             updateFaceStatus('Position your face in the oval', 'warning');
-            document.getElementById('captureBtn').disabled = true;
         }
     }, 200);
 }
@@ -391,7 +390,6 @@ function resetFaceChecks() {
     ['checkFace', 'checkCenter', 'checkSize', 'checkLight'].forEach(id => {
         document.getElementById(id).className = 'check-item';
     });
-    document.getElementById('captureBtn').disabled = true;
 }
 
 function updateFaceStatus(text, type) {
