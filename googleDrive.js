@@ -16,7 +16,8 @@ class GoogleDriveService {
         if (this.initialized) return;
 
         try {
-            const credentials = {
+            // Try environment variables first
+            const envCredentials = {
                 type: 'service_account',
                 project_id: process.env.GOOGLE_PROJECT_ID,
                 private_key_id: process.env.GOOGLE_PRIVATE_KEY_ID,
@@ -28,6 +29,23 @@ class GoogleDriveService {
                 auth_provider_x509_cert_url: 'https://www.googleapis.com/oauth2/v1/certs',
                 client_x509_cert_url: `https://www.googleapis.com/robot/v1/metadata/x509/${encodeURIComponent(process.env.GOOGLE_CLIENT_EMAIL)}`
             };
+
+            // Check if env credentials are complete
+            const hasEnvCreds = Object.values(envCredentials).every(v => v && v !== '');
+            
+            let credentials;
+            if (hasEnvCreds) {
+                credentials = envCredentials;
+            } else {
+                // Fall back to credentials.json file
+                const keyPath = path.join(__dirname, 'credentials.json');
+                if (fs.existsSync(keyPath)) {
+                    console.log('📥 Loading credentials from credentials.json');
+                    credentials = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
+                } else {
+                    throw new Error('No Google Drive credentials found. Set environment variables or place credentials.json in server/');
+                }
+            }
 
             this.auth = new google.auth.GoogleAuth({
                 credentials: credentials,
