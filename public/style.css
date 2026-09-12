@@ -202,6 +202,13 @@ body {
                 -5px -5px 10px var(--shadow-light);
 }
 
+.btn-download {
+    background: var(--bg-color);
+    color: var(--primary);
+    box-shadow: 5px 5px 10px var(--shadow-dark),
+                -5px -5px 10px var(--shadow-light);
+}
+
 /* Form Groups */
 .form-group {
     margin-bottom: 18px;

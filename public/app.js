@@ -462,6 +462,8 @@ function showPhotoValidation(message, type) {
 }
 
 // Form Submit
+let currentStudentData = null;
+
 async function handleSubmit(e) {
     e.preventDefault();
     
@@ -491,10 +493,12 @@ async function handleSubmit(e) {
         const result = await response.json();
         
         if (result.success) {
+            currentStudentData = result.student;
             showStatus('ID generated successfully!', 'success');
             updateIDPreview(result.student);
             document.getElementById('idPreview').classList.remove('hidden');
             document.getElementById('saveBtn').classList.remove('hidden');
+            document.getElementById('downloadBtn').classList.remove('hidden');
         } else {
             showStatus(result.error || 'Error saving data', 'info');
         }
@@ -541,4 +545,91 @@ function showStatus(message, type) {
     status.textContent = message;
     status.className = `status ${type}`;
     status.classList.remove('hidden');
+}
+
+// PDF Generation
+function downloadPDF() {
+    if (!currentStudentData) {
+        showStatus('No student data to generate PDF', 'info');
+        return;
+    }
+    
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    const student = currentStudentData;
+    const fullName = student.middleName 
+        ? `${student.firstName} ${student.middleName} ${student.lastName}`
+        : `${student.firstName} ${student.lastName}`;
+    
+    const formattedDate = new Date(student.birthday).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+    
+    // Header
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('STUDENT ID REGISTRATION RECEIPT', 105, 20, { align: 'center' });
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('This document serves as proof of registration', 105, 28, { align: 'center' });
+    
+    // Line
+    doc.setDrawColor(102, 126, 234);
+    doc.setLineWidth(0.5);
+    doc.line(20, 32, 190, 32);
+    
+    // Student Info
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('STUDENT INFORMATION', 20, 42);
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    
+    const startY = 52;
+    const lineHeight = 8;
+    
+    const fields = [
+        { label: 'Name:', value: fullName },
+        { label: 'Section:', value: student.section },
+        { label: 'LRN:', value: student.lrn },
+        { label: 'Birthday:', value: formattedDate },
+        { label: 'Address:', value: student.address },
+        { label: 'Parent/Guardian:', value: student.parentName },
+        { label: 'Contact Number:', value: student.contactNumber }
+    ];
+    
+    fields.forEach((field, index) => {
+        const y = startY + (index * lineHeight);
+        doc.setFont('helvetica', 'bold');
+        doc.text(field.label, 20, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(field.value || '-', 60, y);
+    });
+    
+    // Add photo if available
+    if (capturedPhotoData) {
+        doc.addImage(capturedPhotoData, 'JPEG', 150, 40, 30, 40);
+    }
+    
+    // Line
+    const footerY = startY + (fields.length * lineHeight) + 10;
+    doc.setDrawColor(102, 126, 234);
+    doc.line(20, footerY, 190, footerY);
+    
+    // Footer
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, 20, footerY + 8);
+    doc.text('This is a computer-generated document.', 20, footerY + 14);
+    
+    // Save PDF
+    const filename = `ID_Receipt_${student.lastName}_${student.firstName}.pdf`;
+    doc.save(filename);
+    
+    showStatus('✓ PDF downloaded successfully', 'valid');
 }
