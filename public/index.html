@@ -19,14 +19,8 @@
                 <div class="photo-section">
                     <div class="photo-preview" id="photoPreview">
                         <span class="placeholder">📷</span>
-                        <!-- Photo Guide Overlay -->
-                        <div class="photo-guide" id="photoGuide">
-                            <div class="guide-oval"></div>
-                            <span class="guide-label">Position face here</span>
-                        </div>
                     </div>
-                    <input type="file" id="cameraInput" name="photo" accept="image/*" capture="user" hidden>
-                    <button type="button" class="btn-neu btn-secondary" onclick="openCamera()">
+                    <button type="button" class="btn-neu btn-secondary" onclick="openCameraModal()">
                         📷 Take Photo
                     </button>
                     <div id="photoValidation" class="photo-validation hidden"></div>
@@ -127,6 +121,57 @@
         </div>
     </div>
 
+    <!-- Camera Modal -->
+    <div id="cameraModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📷 Take Photo</h2>
+                <button type="button" class="close-btn" onclick="closeCameraModal()">✕</button>
+            </div>
+            <div class="camera-container">
+                <video id="cameraPreview" autoplay playsinline></video>
+                <canvas id="faceCanvas"></canvas>
+                <!-- Face Guide Overlay -->
+                <div class="face-guide" id="faceGuide">
+                    <div class="guide-oval" id="guideOval"></div>
+                </div>
+                <!-- Face Status -->
+                <div class="face-status" id="faceStatus">
+                    <span class="status-icon">🔍</span>
+                    <span class="status-text">Searching for face...</span>
+                </div>
+            </div>
+            <div class="camera-controls">
+                <div class="face-checks" id="faceChecks">
+                    <div class="check-item" id="checkFace">
+                        <span class="check-icon">○</span>
+                        <span>Face Detected</span>
+                    </div>
+                    <div class="check-item" id="checkCenter">
+                        <span class="check-icon">○</span>
+                        <span>Centered</span>
+                    </div>
+                    <div class="check-item" id="checkSize">
+                        <span class="check-icon">○</span>
+                        <span>Good Size</span>
+                    </div>
+                    <div class="check-item" id="checkLight">
+                        <span class="check-icon">○</span>
+                        <span>Good Lighting</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-neu btn-capture" id="captureBtn" disabled>
+                    📸 Capture Photo
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden file input for fallback -->
+    <input type="file" id="cameraInput" name="photo" accept="image/*" capture="user" hidden>
+
+    <!-- face-api.js from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
