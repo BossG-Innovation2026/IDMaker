@@ -4,6 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+const { jsPDF } = require('jspdf');
 const googleDrive = require('./googleDrive');
 
 // Load env vars in development
@@ -70,6 +71,88 @@ app.get('/api/classes', (req, res) => {
   res.json(classes);
 });
 
+// Generate receipt PDF server-side
+function generateReceipt(student) {
+  const doc = new jsPDF();
+  const fullName = student.middleName
+    ? `${student.firstName} ${student.middleName} ${student.lastName}`
+    : `${student.firstName} ${student.lastName}`;
+
+  const formattedDate = new Date(student.birthday).toLocaleDateString('en-US', {
+    year: 'numeric', month: 'long', day: 'numeric'
+  });
+
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text('STUDENT ID REGISTRATION RECEIPT', 105, 20, { align: 'center' });
+
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text('This document serves as proof of registration', 105, 28, { align: 'center' });
+
+  doc.setDrawColor(102, 126, 234);
+  doc.setLineWidth(0.5);
+  doc.line(20, 32, 190, 32);
+
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('STUDENT INFORMATION', 20, 42);
+
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+
+  const startY = 52;
+  const lineHeight = 8;
+  const fields = [
+    { label: 'Name:', value: fullName },
+    { label: 'Section:', value: student.section },
+    { label: 'LRN:', value: student.lrn },
+    { label: 'Birthday:', value: formattedDate },
+    { label: 'Address:', value: student.address },
+    { label: 'Parent/Guardian:', value: student.parentName },
+    { label: 'Contact Number:', value: student.contactNumber }
+  ];
+
+  fields.forEach((field, index) => {
+    const y = startY + (index * lineHeight);
+    doc.setFont('helvetica', 'bold');
+    doc.text(field.label, 20, y);
+    doc.setFont('helvetica', 'normal');
+    doc.text(field.value || '-', 60, y);
+  });
+
+  // Add photo
+  const photoPath = path.join(__dirname, 'uploads', student.photoPath);
+  if (fs.existsSync(photoPath)) {
+    const photoData = fs.readFileSync(photoPath);
+    const base64Photo = photoData.toString('base64');
+    doc.addImage(`data:image/jpeg;base64,${base64Photo}`, 'JPEG', 150, 40, 30, 40);
+  }
+
+  const footerY = startY + (fields.length * lineHeight) + 10;
+  doc.setDrawColor(102, 126, 234);
+  doc.line(20, footerY, 190, footerY);
+
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Generated on: ${new Date().toLocaleString()}`, 20, footerY + 8);
+  doc.text('This is a computer-generated document.', 20, footerY + 14);
+
+  return Buffer.from(doc.output('arraybuffer'));
+}
+
+// Generate ID card PNG server-side (returns buffer)
+function generateIDCard(student) {
+  // We generate a simple JPEG using the photo and text data
+  // For a real ID card image, we'd need node-canvas
+  // For now, return the photo as the ID card placeholder
+  const photoPath = path.join(__dirname, 'uploads', student.photoPath);
+  if (fs.existsSync(photoPath)) {
+    return fs.readFileSync(photoPath);
+  }
+  return null;
+}
+
 // Submit student data with photo
 app.post('/api/students', upload.single('photo'), async (req, res) => {
   try {
@@ -111,22 +194,38 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
 
     students.push(student);
 
-    // Auto-upload to Google Drive
-    let driveUploadResult = null;
+    // Upload all 3 files to Google Drive
+    const fileBase = `${lastName}_${firstName}`;
+    let driveResults = { photo: null, receipt: null, idCard: null };
+
     try {
-      const fileBuffer = fs.readFileSync(req.file.path);
-      const fileName = `${lastName}_${firstName}_${lrn}${path.extname(req.file.originalname)}`;
-      
-      driveUploadResult = await googleDrive.uploadStudentPhoto(
-        fileBuffer,
-        fileName,
-        req.file.mimetype,
-        section
+      // 1. Upload Photo
+      const photoBuffer = fs.readFileSync(req.file.path);
+      const photoFileName = `${fileBase}_PIC${path.extname(req.file.originalname)}`;
+      driveResults.photo = await googleDrive.uploadStudentPhoto(
+        photoBuffer, photoFileName, req.file.mimetype, section
       );
-      
-      console.log(`✓ Photo uploaded to Drive: ${fileName} → ${section}/`);
+      console.log(`✓ Photo uploaded: ${photoFileName} → ${section}/`);
+
+      // 2. Upload Receipt PDF
+      const receiptBuffer = generateReceipt(student);
+      const receiptFileName = `${fileBase}_rct.pdf`;
+      driveResults.receipt = await googleDrive.uploadStudentPhoto(
+        receiptBuffer, receiptFileName, 'application/pdf', section
+      );
+      console.log(`✓ Receipt uploaded: ${receiptFileName} → ${section}/`);
+
+      // 3. Upload ID Card
+      const idCardBuffer = generateIDCard(student);
+      if (idCardBuffer) {
+        const idFileName = `${fileBase}_ID.jpg`;
+        driveResults.idCard = await googleDrive.uploadStudentPhoto(
+          idCardBuffer, idFileName, 'image/jpeg', section
+        );
+        console.log(`✓ ID Card uploaded: ${idFileName} → ${section}/`);
+      }
     } catch (driveError) {
-      console.error('Drive upload failed:', driveError.message);
+      console.error('Drive upload error:', driveError.message);
     }
 
     res.json({
@@ -135,8 +234,8 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
       student: {
         ...student,
         photoUrl: `/uploads/${student.photoPath}`,
-        driveUploaded: driveUploadResult?.success || false,
-        driveLink: driveUploadResult?.fileLink || null
+        driveUploaded: driveResults.photo?.success || false,
+        driveLink: driveResults.photo?.fileLink || null
       }
     });
   } catch (error) {

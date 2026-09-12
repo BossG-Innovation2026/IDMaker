@@ -324,6 +324,12 @@ body {
     color: var(--primary-dark);
 }
 
+.drive-note {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    margin-top: 8px;
+}
+
 /* Map Modal */
 .map-modal-content {
     max-width: 400px;
