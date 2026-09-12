@@ -260,7 +260,16 @@ async function openCameraModal() {
         
         const video = document.getElementById('cameraPreview');
         video.srcObject = videoStream;
-        console.log('Camera stream started');
+        
+        // Wait for video to be fully ready
+        await new Promise((resolve) => {
+            if (video.readyState >= 2) {
+                resolve();
+            } else {
+                video.onloadeddata = resolve;
+            }
+        });
+        console.log('Camera stream ready, dimensions:', video.videoWidth, 'x', video.videoHeight);
         
         // Start face detection if available (optional enhancement)
         if (modelsLoaded) {
@@ -415,10 +424,16 @@ function capturePhoto() {
         return;
     }
     
-    const canvas = document.createElement('canvas');
+    // Wait for video to be ready
+    if (!video.videoWidth || !video.videoHeight) {
+        console.log('Video not ready yet, retrying...');
+        video.onloadedmetadata = () => capturePhoto();
+        return;
+    }
     
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
     
     const ctx = canvas.getContext('2d');
     ctx.translate(canvas.width, 0);
@@ -426,7 +441,7 @@ function capturePhoto() {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     
     capturedPhotoData = canvas.toDataURL('image/jpeg', 0.9);
-    console.log('Photo captured successfully');
+    console.log('Photo captured, dimensions:', canvas.width, 'x', canvas.height);
     
     closeCameraModal();
     showPreviewModal();
