@@ -45,6 +45,135 @@ function setupEventListeners() {
     document.getElementById('studentForm').addEventListener('submit', handleSubmit);
     document.getElementById('saveBtn').addEventListener('click', saveToDrive);
     document.getElementById('captureBtn').addEventListener('click', capturePhoto);
+    
+    // Auto caps lock for text fields
+    setupCapsLock();
+    
+    // Phone number formatting
+    setupPhoneFormat();
+    
+    // GPS location
+    setupGPSLocation();
+}
+
+// Auto caps lock for text fields
+function setupCapsLock() {
+    const textFields = ['firstName', 'middleName', 'lastName', 'address', 'parentName'];
+    textFields.forEach(id => {
+        const field = document.getElementById(id);
+        if (field) {
+            field.addEventListener('input', (e) => {
+                e.target.value = e.target.value.toUpperCase();
+            });
+        }
+    });
+}
+
+// Phone number formatting (09xx-xxx-xxxx)
+function setupPhoneFormat() {
+    const phoneField = document.getElementById('contactNumber');
+    if (phoneField) {
+        phoneField.addEventListener('input', (e) => {
+            let value = e.target.value.replace(/\D/g, '');
+            
+            // Limit to 11 digits
+            if (value.length > 11) {
+                value = value.substring(0, 11);
+            }
+            
+            // Format as 09xx-xxx-xxxx
+            if (value.length > 4) {
+                value = value.substring(0, 4) + '-' + value.substring(4);
+            }
+            if (value.length > 8) {
+                value = value.substring(0, 8) + '-' + value.substring(8);
+            }
+            
+            e.target.value = value;
+        });
+    }
+}
+
+// GPS location
+function setupGPSLocation() {
+    const addressField = document.getElementById('address');
+    if (addressField) {
+        // Add a button next to address field
+        const locationBtn = document.createElement('button');
+        locationBtn.type = 'button';
+        locationBtn.className = 'btn-location';
+        locationBtn.innerHTML = '📍 Use My Location';
+        locationBtn.onclick = getCurrentLocation;
+        addressField.parentNode.appendChild(locationBtn);
+    }
+}
+
+function getCurrentLocation() {
+    const addressField = document.getElementById('address');
+    const locationBtn = document.querySelector('.btn-location');
+    
+    if (!navigator.geolocation) {
+        showStatus('Geolocation is not supported by your browser', 'info');
+        return;
+    }
+    
+    locationBtn.innerHTML = '⏳ Getting location...';
+    locationBtn.disabled = true;
+    
+    navigator.geolocation.getCurrentPosition(
+        async (position) => {
+            const { latitude, longitude } = position.coords;
+            
+            try {
+                // Use free geocoding API
+                const response = await fetch(
+                    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+                );
+                const data = await response.json();
+                
+                if (data.display_name) {
+                    // Extract address parts
+                    const address = data.address;
+                    const parts = [
+                        address.house_number,
+                        address.road,
+                        address.village || address.suburb || address.city_district,
+                        address.city || address.municipality,
+                        address.state || address.province,
+                        address.postcode
+                    ].filter(Boolean);
+                    
+                    addressField.value = parts.join(', ').toUpperCase();
+                    showStatus('✓ Location acquired', 'valid');
+                }
+            } catch (error) {
+                // Fallback to coordinates
+                addressField.value = `LAT: ${latitude.toFixed(6)}, LONG: ${longitude.toFixed(6)}`;
+                showStatus('📍 Coordinates added (address lookup failed)', 'warning');
+            }
+            
+            locationBtn.innerHTML = '📍 Use My Location';
+            locationBtn.disabled = false;
+        },
+        (error) => {
+            let message = 'Unable to get location';
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    message = 'Location permission denied';
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    message = 'Location unavailable';
+                    break;
+                case error.TIMEOUT:
+                    message = 'Location request timed out';
+                    break;
+            }
+            showStatus(message, 'info');
+            locationBtn.innerHTML = '📍 Use My Location';
+            locationBtn.disabled = false;
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
 }
 
 // Camera Modal Functions
