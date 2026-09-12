@@ -52,6 +52,9 @@ function setupEventListeners() {
     // Phone number formatting
     setupPhoneFormat();
     
+    // Birthday format display
+    setupBirthdayDisplay();
+    
     // GPS location
     setupGPSLocation();
 }
@@ -90,6 +93,22 @@ function setupPhoneFormat() {
             }
             
             e.target.value = value;
+        });
+    }
+}
+
+// Birthday format display
+function setupBirthdayDisplay() {
+    const birthdayField = document.getElementById('birthday');
+    const display = document.getElementById('birthdayDisplay');
+    
+    if (birthdayField && display) {
+        birthdayField.addEventListener('change', (e) => {
+            const date = new Date(e.target.value);
+            if (!isNaN(date.getTime())) {
+                const options = { year: 'numeric', month: 'long', day: 'numeric' };
+                display.textContent = date.toLocaleDateString('en-US', options);
+            }
         });
     }
 }
