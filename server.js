@@ -4,6 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+const googleDrive = require('./googleDrive');
 
 // Load env vars in development
 if (process.env.NODE_ENV !== 'production') {
@@ -35,7 +36,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// In-memory data store (replace with JSON file or SQLite if needed)
+// In-memory data store
 let students = [];
 
 // Predefined classes list
@@ -70,7 +71,7 @@ app.get('/api/classes', (req, res) => {
 });
 
 // Submit student data with photo
-app.post('/api/students', upload.single('photo'), (req, res) => {
+app.post('/api/students', upload.single('photo'), async (req, res) => {
   try {
     const {
       firstName,
@@ -110,12 +111,32 @@ app.post('/api/students', upload.single('photo'), (req, res) => {
 
     students.push(student);
 
+    // Auto-upload to Google Drive
+    let driveUploadResult = null;
+    try {
+      const fileBuffer = fs.readFileSync(req.file.path);
+      const fileName = `${lastName}_${firstName}_${lrn}${path.extname(req.file.originalname)}`;
+      
+      driveUploadResult = await googleDrive.uploadStudentPhoto(
+        fileBuffer,
+        fileName,
+        req.file.mimetype,
+        section
+      );
+      
+      console.log(`✓ Photo uploaded to Drive: ${fileName} → ${section}/`);
+    } catch (driveError) {
+      console.error('Drive upload failed:', driveError.message);
+    }
+
     res.json({
       success: true,
       message: 'Student data saved successfully',
       student: {
         ...student,
-        photoUrl: `/uploads/${student.photoPath}`
+        photoUrl: `/uploads/${student.photoPath}`,
+        driveUploaded: driveUploadResult?.success || false,
+        driveLink: driveUploadResult?.fileLink || null
       }
     });
   } catch (error) {
@@ -133,7 +154,7 @@ app.get('/api/students', (req, res) => {
   res.json(studentsWithUrl);
 });
 
-// Save to Google Drive (placeholder - implement with actual credentials)
+// Manual save to Google Drive
 app.post('/api/save-to-drive', async (req, res) => {
   try {
     const { studentId } = req.body;
@@ -143,16 +164,25 @@ app.post('/api/save-to-drive', async (req, res) => {
       return res.status(404).json({ error: 'Student not found' });
     }
 
-    // TODO: Implement Google Drive upload
-    // 1. Load credentials from .env
-    // 2. Authenticate with Google Drive API
-    // 3. Upload photo and ID card to Drive folder
-    // 4. Return success
+    const filePath = path.join(__dirname, 'uploads', student.photoPath);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Photo file not found' });
+    }
+
+    const fileBuffer = fs.readFileSync(filePath);
+    const fileName = `${student.lastName}_${student.firstName}_${student.lrn}${path.extname(student.photoPath)}`;
+    
+    const result = await googleDrive.uploadStudentPhoto(
+      fileBuffer,
+      fileName,
+      'image/jpeg',
+      student.section
+    );
 
     res.json({
       success: true,
-      message: 'Google Drive integration pending - add credentials to .env',
-      student: student.firstName + ' ' + student.lastName
+      message: 'Photo uploaded to Google Drive',
+      fileLink: result.fileLink
     });
   } catch (error) {
     console.error('Error saving to Drive:', error);
@@ -167,4 +197,5 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log(`Classes available: ${classes.length} predefined`);
+  console.log('Google Drive integration: Enabled');
 });
