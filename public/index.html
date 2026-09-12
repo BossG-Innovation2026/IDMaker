@@ -19,11 +19,17 @@
                 <div class="photo-section">
                     <div class="photo-preview" id="photoPreview">
                         <span class="placeholder">📷</span>
+                        <!-- Photo Guide Overlay -->
+                        <div class="photo-guide" id="photoGuide">
+                            <div class="guide-oval"></div>
+                            <span class="guide-label">Position face here</span>
+                        </div>
                     </div>
                     <input type="file" id="cameraInput" name="photo" accept="image/*" capture="user" hidden>
-                    <button type="button" class="btn-neu btn-secondary" onclick="document.getElementById('cameraInput').click()">
-                        Take Photo
+                    <button type="button" class="btn-neu btn-secondary" onclick="openCamera()">
+                        📷 Take Photo
                     </button>
+                    <div id="photoValidation" class="photo-validation hidden"></div>
                 </div>
 
                 <!-- Class Selection -->

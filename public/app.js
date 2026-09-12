@@ -35,21 +35,71 @@ function setupEventListeners() {
     document.getElementById('saveBtn').addEventListener('click', saveToDrive);
 }
 
+function openCamera() {
+    document.getElementById('cameraInput').click();
+}
+
 function handlePhotoCapture(e) {
     const file = e.target.files[0];
     if (file) {
         selectedFile = file;
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            document.getElementById('photoPreview').innerHTML = 
-                `<img src="${event.target.result}" alt="Student Photo">`;
-        };
-        reader.readAsDataURL(file);
+        validatePhoto(file);
     }
+}
+
+function validatePhoto(file) {
+    const validation = document.getElementById('photoValidation');
+    validation.classList.remove('hidden', 'valid', 'invalid', 'warning');
+    
+    // Check file type
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+        validation.textContent = '❌ Invalid file type. Use JPEG, PNG, or WebP.';
+        validation.classList.add('invalid');
+        return;
+    }
+    
+    // Check file size (max 5MB)
+    const maxSize = 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+        validation.textContent = '❌ File too large. Maximum size is 5MB.';
+        validation.classList.add('invalid');
+        return;
+    }
+    
+    // Read and validate image dimensions
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+            const photoPreview = document.getElementById('photoPreview');
+            
+            // Check minimum dimensions
+            if (img.width < 200 || img.height < 200) {
+                validation.textContent = '⚠️ Photo too small. Minimum 200x200 pixels.';
+                validation.classList.add('warning');
+            } else {
+                validation.textContent = '✓ Photo valid (' + img.width + 'x' + img.height + 'px)';
+                validation.classList.add('valid');
+            }
+            
+            // Display photo
+            photoPreview.innerHTML = `<img src="${event.target.result}" alt="Student Photo">`;
+            photoPreview.classList.add('has-photo');
+        };
+        img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
 }
 
 async function handleSubmit(e) {
     e.preventDefault();
+    
+    // Validate photo
+    if (!selectedFile) {
+        showStatus('Please capture a photo first', 'info');
+        return;
+    }
     
     const formData = new FormData();
     formData.append('firstName', document.getElementById('firstName').value);
@@ -61,10 +111,7 @@ async function handleSubmit(e) {
     formData.append('address', document.getElementById('address').value);
     formData.append('parentName', document.getElementById('parentName').value);
     formData.append('contactNumber', document.getElementById('contactNumber').value);
-    
-    if (selectedFile) {
-        formData.append('photo', selectedFile);
-    }
+    formData.append('photo', selectedFile);
     
     try {
         const response = await fetch(`${API_URL}/api/students`, {
