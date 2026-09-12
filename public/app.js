@@ -229,26 +229,39 @@ function getCurrentLocation() {
     );
 }
 
-// Reverse geocode to get Town and Province format
+// Reverse geocode to get detailed address format
 async function reverseGeocode(lat, lon) {
     try {
         const response = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1`
         );
         const data = await response.json();
         
         if (data.address) {
             const addr = data.address;
-            const town = addr.town || addr.city || addr.municipality || addr.village || addr.suburb || '';
-            const province = addr.state || addr.province || '';
             
-            // Format: Town, Province
-            if (town && province) {
-                return `${town}, ${province}`.toUpperCase();
-            } else if (town) {
-                return town.toUpperCase();
-            } else if (province) {
-                return province.toUpperCase();
+            // Line 1: Purok, Street or Subdivision
+            const purok = addr.purok || addr.hamlet || '';
+            const street = addr.road || addr.street || '';
+            const subdivision = addr.subdivision || addr.neighbourhood || '';
+            
+            let line1Parts = [purok, street, subdivision].filter(Boolean);
+            let line1 = line1Parts.length > 0 ? line1Parts.join(', ') : '';
+            
+            // Line 2: Barangay, Town, Province, Zipcode
+            const barangay = addr.village || addr.quarter || addr.city_district || '';
+            const town = addr.town || addr.city || addr.municipality || '';
+            const province = addr.state || addr.province || '';
+            const zipcode = addr.postcode || '';
+            
+            let line2Parts = [barangay, town, province, zipcode].filter(Boolean);
+            let line2 = line2Parts.join(', ');
+            
+            // Format: Line1, Line2
+            if (line1 && line2) {
+                return `${line1.toUpperCase()}, ${line2.toUpperCase()}`;
+            } else if (line2) {
+                return line2.toUpperCase();
             }
         }
     } catch (error) {
@@ -290,7 +303,7 @@ function openMapModal() {
             document.getElementById('mapAddress').textContent = address || 'Address not found';
             
             selectedMapLocation = { lat, lng, address };
-            document.getElementById('confirmMapBtn').disabled = false;
+            document.getElementById('confirmMapBtn').disabled = !address;
         });
     }
     
