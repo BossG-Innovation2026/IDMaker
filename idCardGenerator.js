@@ -230,7 +230,23 @@ function convertDocxToPdf(docxBuffer, studentId) {
       if (!loPath) return null;
       cmd = `"${loPath}" --headless --convert-to pdf --outdir "${tmpDir}" "${tmpDocx}"`;
     } else {
-      cmd = `libreoffice --headless --convert-to pdf --outdir "${tmpDir}" "${tmpDocx}"`;
+      const loPaths = [
+        '/usr/bin/libreoffice',
+        '/usr/bin/soffice',
+        '/usr/bin/libreoffice-writer'
+      ];
+      let loPath = null;
+      for (const p of loPaths) {
+        if (fs.existsSync(p)) { loPath = p; break; }
+      }
+      if (!loPath) {
+        try {
+          const result = require('child_process').execSync('which libreoffice 2>/dev/null || which soffice 2>/dev/null', { encoding: 'utf8', stdio: 'pipe' }).trim();
+          if (result) loPath = result;
+        } catch (e) {}
+      }
+      if (!loPath) return null;
+      cmd = `"${loPath}" --headless --convert-to pdf --outdir "${tmpDir}" "${tmpDocx}"`;
     }
     execSync(cmd, { timeout: 60000, windowsHide: true, stdio: 'pipe' });
     if (fs.existsSync(tmpPdf)) {
