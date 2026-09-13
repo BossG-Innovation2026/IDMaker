@@ -54,18 +54,33 @@
                     <input type="text" id="lastName" name="lastName" placeholder="Last Name" required>
                 </div>
 
+                <!-- Auto-generated Full Name -->
+                <div class="form-group">
+                    <label>Full Name (Auto-generated)</label>
+                    <input type="text" id="fullName" readonly class="auto-address" placeholder="SURNAME, FIRSTNAME M.I.">
+                </div>
+
                 <!-- Other Fields -->
                 <div class="form-row">
+                    <div class="form-group">
+                        <label>Sex *</label>
+                        <select id="sex" name="sex" required>
+                            <option value="">Select Sex</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                        </select>
+                    </div>
                     <div class="form-group">
                         <label>Birthday *</label>
                         <input type="date" id="birthday" name="birthday" min="2000-01-01" max="2013-12-31" required>
                         <div id="birthdayDisplay" class="date-display"></div>
                     </div>
-                    <div class="form-group">
-                        <label>LRN * (12 digits)</label>
-                        <input type="text" id="lrn" name="lrn" placeholder="12-digit LRN" maxlength="12" pattern="\d{12}" required>
-                        <div id="lrnValidation" class="field-validation hidden"></div>
-                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>LRN * (12 digits)</label>
+                    <input type="text" id="lrn" name="lrn" placeholder="12-digit LRN" maxlength="12" pattern="\d{12}" required>
+                    <div id="lrnValidation" class="field-validation hidden"></div>
                 </div>
 
                 <div class="form-group">
@@ -137,6 +152,7 @@
                         </div>
                         <div class="id-card-info">
                             <p><strong>Name:</strong> <span id="idName">-</span></p>
+                            <p><strong>Sex:</strong> <span id="idSex">-</span></p>
                             <p><strong>Class:</strong> <span id="idClass">-</span></p>
                             <p><strong>LRN:</strong> <span id="idLRN">-</span></p>
                             <p><strong>Birthday:</strong> <span id="idBirthday">-</span></p>
@@ -186,9 +202,9 @@
                         <span class="check-icon">○</span>
                         <span>Good Size</span>
                     </div>
-                    <div class="check-item" id="checkLight">
+                    <div class="check-item" id="checkBg">
                         <span class="check-icon">○</span>
-                        <span>Good Lighting</span>
+                        <span>White Background</span>
                     </div>
                 </div>
                 <button type="button" class="btn-neu btn-capture" id="captureBtn" onclick="capturePhoto()">

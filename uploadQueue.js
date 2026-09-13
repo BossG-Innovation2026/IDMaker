@@ -46,11 +46,27 @@ function buildFiles(student) {
       ? student.idCardPath
       : path.join(__dirname, student.idCardPath);
     if (fs.existsSync(idPath)) {
+      const ext = student.idCardPath ? path.extname(student.idCardPath).slice(1) : 'docx';
+      const isPdf = ext === 'pdf';
       files.push({
         key: 'idCard',
-    name: `${base}_ID.${student.idCardPath ? path.extname(student.idCardPath).slice(1) : 'docx'}`,
-    mimeType: student.idCardMime || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        name: `${base}_ID.${ext}`,
+        mimeType: isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         buffer: fs.readFileSync(idPath)
+      });
+    }
+  }
+
+  if (student.idCardDocxPath) {
+    const docxPath = path.isAbsolute(student.idCardDocxPath)
+      ? student.idCardDocxPath
+      : path.join(__dirname, student.idCardDocxPath);
+    if (fs.existsSync(docxPath) && !files.find(f => f.key === 'idCard' && f.name.endsWith('.docx'))) {
+      files.push({
+        key: 'idCardDocx',
+        name: `${base}_ID.docx`,
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        buffer: fs.readFileSync(docxPath)
       });
     }
   }
@@ -90,11 +106,15 @@ async function processStudent(id) {
 
       const fileLinks = {
         photo: results.photo ? results.photo.fileLink : null,
-        idCard: results.idCard ? results.idCard.fileLink : null
+        idCard: results.idCard ? results.idCard.fileLink : null,
+        idCardDocx: results.idCardDocx ? results.idCardDocx.fileLink : null
       };
 
       if (sectionFolderId) {
         await googleDrive.appendStudentRow(student, fileLinks, sectionFolderId);
+        
+        const sectionStudents = store.all().filter(s => s.section === student.section);
+        await googleDrive.generateSectionExcel(student.section, sectionStudents, sectionFolderId);
       }
 
       store.update(id, {

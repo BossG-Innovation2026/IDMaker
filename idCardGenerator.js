@@ -26,7 +26,7 @@ function escapeXml(str) {
 
 /**
  * Build an inline drawing element for the picture placeholder.
- * Uses the same dimensions as the template's picture box (3648710 × 86360 EMU).
+ * Uses the same dimensions as the template's picture box (1193800 × 295275 EMU ≈ 1.31" × 0.32").
  */
 function buildInlineDrawing(rId, cx, cy) {
   return `<w:r><w:rPr><w:rFonts w:ascii="Copperplate Gothic Bold" w:hAnsi="Copperplate Gothic Bold"/><w:spacing w:val="-4"/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" wp14:anchorId="3EEF1DD2" wp14:editId="0616ACFE"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="100" name="Student Photo"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><pic:nvPicPr><pic:cNvPr id="100" name="Student Photo"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
@@ -63,9 +63,9 @@ function insertPhoto(zip, documentXml, photoBuffer) {
   // Update the relationships file
   zip.file(relsFileName, relsXml);
 
-  // Dimensions for the picture box in the template (3648710 × 86360 EMU ≈ 5.1cm × 1.2cm)
-  const cx = 3648710;
-  const cy = 86360;
+  // Dimensions for the picture box in the template (1193800 × 295275 EMU ≈ 1.31" × 0.32")
+  const cx = 1193800;
+  const cy = 295275;
 
   // Build the inline drawing element with the new relationship ID
   const drawingXml = buildInlineDrawing(newRelId, cx, cy);
@@ -75,21 +75,59 @@ function insertPhoto(zip, documentXml, photoBuffer) {
   // We need to find the <w:r> element that contains 'picture' in its <w:t> and replace it.
   let result = documentXml;
 
-  // Strategy: Replace any <w:r> that contains 'picture' in its text content with the drawing element
-  const pictureRunRegex = /<w:r[^>]*>[\s\S]*?<w:t[^>]*>picture<\/w:t>[^\n]*?<\/w:r>/gi;
-  result = result.replace(pictureRunRegex, (match) => {
-    // For each match, rebuild the run with the drawing element
-    // Keep the original rPr (formatting) from the first run
-    const rPrMatch = match.match(/<w:rPr>([\s\S]*?)<\/w:rPr>/);
-    const rPr = rPrMatch ? rPrMatch[1] : '';
-    // Build the new run: rPr + drawing element (without the closing </w:r> since we'll add it)
-    // Actually, let's just replace the entire run xml
-    return buildInlineDrawing(newRelId, cx, cy);
-  });
-
-  // Also handle the case where picture appears without the opening braces (just the text)
-  const pictureTextRegex = /<w:t[^>]*>picture<\/w:t>/g;
-  result = result.replace(pictureTextRegex, '<w:t></w:t>');
+  // Strategy: Replace ALL runs that are part of {{picture}} with the drawing element.
+  // The template splits {{picture}} as: {{ + picture}}  across multiple <w:r> elements.
+  // We need to replace runs containing '{{', 'picture}}', or '{{picture' with the drawing.
+  
+  // First, find ALL runs and identify which ones contain picture-related text
+  const allRuns = [...result.matchAll(/<w:r\b[^>]*>[\s\S]*?<\/w:r>/g)];
+  
+  // Identify runs to remove (containing {{, picture, or }})
+  // But only remove runs that are part of the {{picture}} placeholder sequence
+  // Strategy: find 'picture' in any run text, then expand to include adjacent {{ and }} runs
+  
+  // Find the run index containing 'picture' in its text
+  let pictureRunIdx = -1;
+  for (let i = 0; i < allRuns.length; i++) {
+    const tMatch = allRuns[i][0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
+    if (tMatch && tMatch[1].includes('picture')) {
+      pictureRunIdx = i;
+      break;
+    }
+  }
+  
+  if (pictureRunIdx >= 0) {
+    // Find the range of runs that are part of {{picture}}
+    // Look backwards for {{ and forwards for }} 
+    let removeStart = pictureRunIdx;
+    let removeEnd = pictureRunIdx;
+    
+    // Check previous run for {{
+    if (pictureRunIdx > 0) {
+      const prevT = allRuns[pictureRunIdx - 1][0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
+      if (prevT && prevT[1].includes('{{')) {
+        removeStart = pictureRunIdx - 1;
+      }
+    }
+    
+    // Check if there are }} runs after
+    for (let i = pictureRunIdx + 1; i < allRuns.length && i <= pictureRunIdx + 3; i++) {
+      const tMatch = allRuns[i][0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
+      if (tMatch && tMatch[1].includes('}}')) {
+        removeEnd = i;
+      } else {
+        break;
+      }
+    }
+    
+    // Replace the range: keep first run but replace its text with the drawing element
+    const beforeRange = result.substring(0, allRuns[removeStart].index);
+    const afterRange = result.substring(allRuns[removeEnd].index + allRuns[removeEnd][0].length);
+    
+    // Insert drawing element in place of the first run
+    const drawingXml = buildInlineDrawing(newRelId, cx, cy);
+    result = beforeRange + drawingXml + afterRange;
+  }
 
   return result;
 }

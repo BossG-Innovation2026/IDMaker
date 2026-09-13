@@ -56,6 +56,11 @@ function update(id, patch) {
   return student;
 }
 
+function remove(id) {
+  students = students.filter(s => s.id !== id);
+  persist();
+}
+
 load();
 
-module.exports = { all, find, add, update };
+module.exports = { all, find, add, update, remove };

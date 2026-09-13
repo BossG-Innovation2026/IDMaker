@@ -70,9 +70,38 @@ app.get('/api/classes', (req, res) => {
   res.json(classes);
 });
 
-// Generate ID card (PDF on Render, DOCX locally)
-function generateIDCardFile(student) {
-  return generateIDCard(student);
+// Generate ID card (PDF + DOCX on Render, DOCX locally)
+function generateIDCardFile(student, photoBuf) {
+  const { generateIDCard, generateIDCardDocx } = require('./idCardGenerator');
+  const docxBuffer = generateIDCardDocx(student, photoBuf);
+  
+  const uploadsDir = path.join(__dirname, 'uploads');
+  const docxPath = path.join(uploadsDir, `${student.id}_ID.docx`);
+  fs.writeFileSync(docxPath, docxBuffer);
+  
+  try {
+    const { execSync } = require('child_process');
+    let loPath = null;
+    if (process.platform !== 'win32') {
+      const paths = ['/usr/bin/libreoffice', '/usr/bin/soffice', '/usr/bin/libreoffice-writer'];
+      for (const p of paths) { if (fs.existsSync(p)) { loPath = p; break; } }
+      if (!loPath) {
+        try { loPath = require('child_process').execSync('which libreoffice 2>/dev/null || which soffice 2>/dev/null', { encoding: 'utf8', stdio: 'pipe' }).trim(); } catch(e) {}
+      }
+    }
+    
+    if (loPath) {
+      const pdfPath = path.join(uploadsDir, `${student.id}_ID.pdf`);
+      execSync(`"${loPath}" --headless --convert-to pdf --outdir "${uploadsDir}" "${docxPath}"`, { timeout: 60000, stdio: 'pipe' });
+      if (fs.existsSync(pdfPath)) {
+        return { pdfPath, docxPath };
+      }
+    }
+  } catch (e) {
+    console.error('PDF conversion failed:', e.message);
+  }
+  
+  return { pdfPath: null, docxPath };
 }
 
 function present(student) {
@@ -82,6 +111,36 @@ function present(student) {
   };
 }
 
+// Check for duplicate student (surname + firstname + section)
+app.get('/api/students/check-duplicate', (req, res) => {
+  const { firstName, lastName, section } = req.query;
+  if (!firstName || !lastName || !section) {
+    return res.json({ duplicate: false });
+  }
+  
+  const students = store.all();
+  const duplicate = students.find(s => 
+    s.section === section &&
+    s.lastName.toUpperCase() === lastName.toUpperCase() &&
+    s.firstName.toUpperCase() === firstName.toUpperCase()
+  );
+  
+  if (duplicate) {
+    res.json({ 
+      duplicate: true, 
+      existing: {
+        id: duplicate.id,
+        firstName: duplicate.firstName,
+        lastName: duplicate.lastName,
+        section: duplicate.section,
+        createdAt: duplicate.createdAt
+      }
+    });
+  } else {
+    res.json({ duplicate: false });
+  }
+});
+
 // Submit student data with photo
 app.post('/api/students', upload.single('photo'), async (req, res) => {
   try {
@@ -89,6 +148,7 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
       firstName,
       middleName,
       lastName,
+      sex,
       birthday,
       lrn,
       section,
@@ -98,7 +158,7 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!firstName || !lastName || !birthday || !lrn || !section || !address || !parentName || !contactNumber) {
+    if (!firstName || !lastName || !sex || !birthday || !lrn || !section || !address || !parentName || !contactNumber) {
       return res.status(400).json({ error: 'All required fields must be filled' });
     }
 
@@ -111,6 +171,7 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
       firstName,
       middleName: middleName || '',
       lastName,
+      sex,
       birthday,
       lrn,
       section,
@@ -129,15 +190,15 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
     // Generate ID card on disk for background upload
     try {
       const photoBuf = fs.readFileSync(path.join(__dirname, 'uploads', student.photoPath));
-      const idCardBuffer = generateIDCardFile(student, photoBuf);
-      if (idCardBuffer) {
-        const isPdf = idCardBuffer[0] === 0x25 && idCardBuffer[1] === 0x50;
-        const ext = isPdf ? 'pdf' : 'docx';
-        const mime = isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-        const idName = `${student.id}_ID.${ext}`;
-        fs.writeFileSync(path.join(__dirname, 'uploads', idName), idCardBuffer);
-        student.idCardPath = path.join('uploads', idName);
-        student.idCardMime = mime;
+      const result = generateIDCardFile(student, photoBuf);
+      if (result) {
+        if (result.pdfPath && fs.existsSync(result.pdfPath)) {
+          student.idCardPath = result.pdfPath;
+          student.idCardMime = 'application/pdf';
+        }
+        if (result.docxPath && fs.existsSync(result.docxPath)) {
+          student.idCardDocxPath = result.docxPath;
+        }
       }
     } catch (idCardError) {
       console.error('ID card generation failed:', idCardError.message);
@@ -177,6 +238,31 @@ app.get('/api/students/:id/status', (req, res) => {
     driveLink: student.driveLink,
     driveFiles: student.driveFiles || null
   });
+});
+
+// Delete a student
+app.delete('/api/students/:id', (req, res) => {
+  const student = store.find(req.params.id);
+  if (!student) {
+    return res.status(404).json({ error: 'Student not found' });
+  }
+  
+  const uploadsDir = path.join(__dirname, 'uploads');
+  try {
+    if (student.photoPath) {
+      const p = path.join(uploadsDir, student.photoPath);
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+    if (student.idCardPath) {
+      const p = path.join(uploadsDir, path.basename(student.idCardPath));
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+  } catch (e) {
+    console.warn('Error cleaning up files:', e.message);
+  }
+  
+  store.remove(student.id);
+  res.json({ success: true, message: 'Student deleted' });
 });
 
 // Re-queue a failed/pending upload

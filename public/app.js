@@ -175,9 +175,23 @@ function setupCapsLock() {
         if (field) {
             field.addEventListener('input', (e) => {
                 e.target.value = e.target.value.toUpperCase();
+                updateFullName();
             });
         }
     });
+}
+
+function updateFullName() {
+    const firstName = document.getElementById('firstName').value.trim();
+    const middleName = document.getElementById('middleName').value.trim();
+    const lastName = document.getElementById('lastName').value.trim();
+    
+    let fullName = '';
+    if (lastName) fullName += lastName;
+    if (firstName) fullName += (fullName ? ', ' : '') + firstName;
+    if (middleName) fullName += ' ' + middleName.charAt(0) + '.';
+    
+    document.getElementById('fullName').value = fullName;
 }
 
 // Phone number formatting (09xx-xxx-xxxx)
@@ -355,7 +369,10 @@ function startFaceDetection() {
         const brightness = await checkBrightness(video, box);
         const isGoodBrightness = brightness > 40 && brightness < 220;
         
-        ctx.strokeStyle = isCentered && isGoodSize ? '#48bb78' : '#dd6b20';
+        const bgWhiteness = await checkBackgroundWhiteness(video, box);
+        const isWhiteBg = bgWhiteness > 170;
+        
+        ctx.strokeStyle = isCentered && isGoodSize && isWhiteBg ? '#48bb78' : '#dd6b20';
         ctx.lineWidth = 3;
         ctx.strokeRect(box.x, box.y, box.width, box.height);
         
@@ -367,14 +384,17 @@ function startFaceDetection() {
             ctx.fill();
         });
         
-        const allPassed = isCentered && isGoodSize && isGoodBrightness;
-        updateFaceChecks(true, isCentered, isGoodSize, isGoodBrightness);
+        const allPassed = isCentered && isGoodSize && isGoodBrightness && isWhiteBg;
+        updateFaceChecks(true, isCentered, isGoodSize, isGoodBrightness, isWhiteBg);
         
         const guideOval = document.getElementById('guideOval');
         guideOval.className = 'guide-oval';
         if (allPassed) {
             guideOval.classList.add('detected', 'centered');
             updateFaceStatus('Perfect! Ready to capture', 'success');
+        } else if (!isWhiteBg) {
+            guideOval.classList.add('warning');
+            updateFaceStatus('Background too dark - use white background', 'warning');
         } else if (isCentered && isGoodSize) {
             guideOval.classList.add('warning');
             updateFaceStatus('Good - tap Capture when ready', 'warning');
@@ -403,12 +423,48 @@ async function checkBrightness(video, box) {
     return sum / (data.length / 4);
 }
 
-function updateFaceChecks(faceDetected, centered, goodSize, goodLighting) {
+async function checkBackgroundWhiteness(video, faceBox) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    canvas.width = w;
+    canvas.height = h;
+    
+    ctx.drawImage(video, 0, 0, w, h);
+    
+    const imageData = ctx.getImageData(0, 0, w, h);
+    const data = imageData.data;
+    
+    let bgSum = 0;
+    let bgCount = 0;
+    
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const idx = (y * w + x) * 4;
+            const r = data[idx];
+            const g = data[idx + 1];
+            const b = data[idx + 2];
+            
+            const inFace = x >= faceBox.x && x <= faceBox.x + faceBox.width &&
+                           y >= faceBox.y && y <= faceBox.y + faceBox.height;
+            
+            if (!inFace) {
+                bgSum += (r + g + b) / 3;
+                bgCount++;
+            }
+        }
+    }
+    
+    return bgCount > 0 ? bgSum / bgCount : 128;
+}
+
+function updateFaceChecks(faceDetected, centered, goodSize, goodLighting, whiteBg) {
     const checks = {
         checkFace: faceDetected,
         checkCenter: centered,
         checkSize: goodSize,
-        checkLight: goodLighting
+        checkBg: whiteBg
     };
     
     Object.entries(checks).forEach(([id, passed]) => {
@@ -418,7 +474,7 @@ function updateFaceChecks(faceDetected, centered, goodSize, goodLighting) {
 }
 
 function resetFaceChecks() {
-    ['checkFace', 'checkCenter', 'checkSize', 'checkLight'].forEach(id => {
+    ['checkFace', 'checkCenter', 'checkSize', 'checkBg'].forEach(id => {
         document.getElementById(id).className = 'check-item';
     });
 }
@@ -455,9 +511,33 @@ function capturePhoto() {
                 const reader = new FileReader();
                 reader.onloadend = () => {
                     capturedPhotoData = reader.result;
-                    console.log('Photo captured via ImageCapture API');
-                    closeCameraModal();
-                    showPreviewModal();
+                    if (modelsLoaded) {
+                        faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+                            .then(detections => {
+                                if (detections.length > 0) {
+                                    const detection = detections.reduce((prev, current) => 
+                                        (prev.detection.box.area > current.detection.box.area) ? prev : current
+                                    );
+                                    const img = new Image();
+                                    img.onload = () => {
+                                        capturedPhotoData = cropToFace(img, detection.detection.box);
+                                        closeCameraModal();
+                                        showPreviewModal();
+                                    };
+                                    img.src = capturedPhotoData;
+                                } else {
+                                    closeCameraModal();
+                                    showPreviewModal();
+                                }
+                            })
+                            .catch(() => {
+                                closeCameraModal();
+                                showPreviewModal();
+                            });
+                    } else {
+                        closeCameraModal();
+                        showPreviewModal();
+                    }
                 };
                 reader.readAsDataURL(blob);
             })
@@ -476,27 +556,62 @@ function captureWithCanvas(video) {
     canvas.height = video.videoHeight;
     
     const ctx = canvas.getContext('2d');
-    // Draw without mirror - just flip horizontally after
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     
-    // Check if frame is black (all pixels near 0)
     const imageData = ctx.getImageData(0, 0, 10, 10).data;
     let sum = 0;
     for (let i = 0; i < imageData.length; i += 4) {
         sum += imageData[i] + imageData[i+1] + imageData[i+2];
     }
-    console.log('Canvas pixel sample sum:', sum);
     
     if (sum < 10) {
-        console.log('Frame is black, retrying in 200ms...');
         setTimeout(() => captureWithCanvas(video), 200);
         return;
     }
     
     capturedPhotoData = canvas.toDataURL('image/jpeg', 0.9);
-    console.log('Photo captured via canvas');
-    closeCameraModal();
-    showPreviewModal();
+    
+    if (modelsLoaded) {
+        faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+            .then(detections => {
+                if (detections.length > 0) {
+                    const detection = detections.reduce((prev, current) => 
+                        (prev.detection.box.area > current.detection.box.area) ? prev : current
+                    );
+                    capturedPhotoData = cropToFace(canvas, detection.detection.box);
+                }
+                closeCameraModal();
+                showPreviewModal();
+            })
+            .catch(() => {
+                closeCameraModal();
+                showPreviewModal();
+            });
+    } else {
+        closeCameraModal();
+        showPreviewModal();
+    }
+}
+
+function cropToFace(sourceCanvas, faceBox) {
+    const cropCanvas = document.createElement('canvas');
+    const ctx = cropCanvas.getContext('2d');
+    
+    const padding = 0.4;
+    const cropW = faceBox.width * (1 + padding * 2);
+    const cropH = faceBox.height * (1 + padding * 2);
+    const cropX = Math.max(0, faceBox.x - faceBox.width * padding);
+    const cropY = Math.max(0, faceBox.y - faceBox.height * padding);
+    
+    const targetW = 400;
+    const targetH = 500;
+    
+    cropCanvas.width = targetW;
+    cropCanvas.height = targetH;
+    
+    ctx.drawImage(sourceCanvas, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH);
+    
+    return cropCanvas.toDataURL('image/jpeg', 0.92);
 }
 
 function showPreviewModal() {
@@ -553,10 +668,40 @@ async function handleSubmit(e) {
         return;
     }
     
+    const firstName = document.getElementById('firstName').value.trim();
+    const lastName = document.getElementById('lastName').value.trim();
+    const section = document.getElementById('classSelect').value;
+    
+    try {
+        const checkRes = await fetch(`${API_URL}/api/students/check-duplicate?firstName=${encodeURIComponent(firstName)}&lastName=${encodeURIComponent(lastName)}&section=${encodeURIComponent(section)}`);
+        const checkData = await checkRes.json();
+        
+        if (checkData.duplicate) {
+            const confirmed = confirm(
+                `DUPLICATE WARNING!\n\n` +
+                `A student with name "${checkData.existing.lastName}, ${checkData.existing.firstName}" ` +
+                `already exists in ${checkData.existing.section}.\n` +
+                `Created: ${new Date(checkData.existing.createdAt).toLocaleString()}\n\n` +
+                `Do you want to OVERRIDE the existing entry?\n` +
+                `(The old entry will be deleted and replaced)`
+            );
+            
+            if (!confirmed) {
+                showStatus('Entry cancelled by user', 'info');
+                return;
+            }
+            
+            await fetch(`${API_URL}/api/students/${checkData.existing.id}`, { method: 'DELETE' });
+        }
+    } catch (err) {
+        console.warn('Duplicate check failed, proceeding:', err);
+    }
+    
     const formData = new FormData();
     formData.append('firstName', document.getElementById('firstName').value);
     formData.append('middleName', document.getElementById('middleName').value);
     formData.append('lastName', document.getElementById('lastName').value);
+    formData.append('sex', document.getElementById('sex').value);
     formData.append('birthday', document.getElementById('birthday').value);
     formData.append('lrn', document.getElementById('lrn').value);
     formData.append('section', document.getElementById('classSelect').value);
@@ -649,6 +794,7 @@ function updateIDPreview(student) {
     });
     
     document.getElementById('idName').textContent = fullName;
+    document.getElementById('idSex').textContent = student.sex || '-';
     document.getElementById('idClass').textContent = student.section;
     document.getElementById('idLRN').textContent = student.lrn;
     document.getElementById('idBirthday').textContent = formattedDate;

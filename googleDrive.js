@@ -1,6 +1,7 @@
 const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
+const ExcelJS = require('exceljs');
 
 const PARENT_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || '0ACktHqI8zSSCUk9PVA';
 
@@ -306,6 +307,92 @@ class GoogleDriveService {
             return { success: true, spreadsheetId };
         } catch (error) {
             console.error('Error appending to sheet:', error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
+    async generateSectionExcel(section, students, folderId) {
+        await this.initialize();
+        if (!this.initialized) throw new Error('Google Drive not initialized');
+
+        try {
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Students');
+
+            worksheet.columns = [
+                { header: '#', key: 'num', width: 5 },
+                { header: 'Student No', key: 'studentNo', width: 12 },
+                { header: 'LRN', key: 'lrn', width: 15 },
+                { header: 'Last Name', key: 'lastName', width: 18 },
+                { header: 'First Name', key: 'firstName', width: 18 },
+                { header: 'M.I.', key: 'mi', width: 8 },
+                { header: 'Sex', key: 'sex', width: 8 },
+                { header: 'Birthday', key: 'birthday', width: 15 },
+                { header: 'Address', key: 'address', width: 35 },
+                { header: 'Parent/Guardian', key: 'parentName', width: 22 },
+                { header: 'Contact', key: 'contactNumber', width: 15 },
+                { header: 'Photo Link', key: 'photoLink', width: 25 },
+                { header: 'ID Card Link', key: 'idCardLink', width: 25 },
+                { header: 'Generated', key: 'createdAt', width: 22 }
+            ];
+
+            worksheet.getRow(1).font = { bold: true, size: 11 };
+            worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
+            worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+
+            students.forEach((s, i) => {
+                const mi = s.middleName ? s.middleName.charAt(0) + '.' : '';
+                const photoLink = s.driveFiles?.photo?.fileLink || '';
+                const idCardLink = s.driveFiles?.idCard?.fileLink || '';
+                
+                worksheet.addRow({
+                    num: i + 1,
+                    studentNo: s.studentNo || '',
+                    lrn: s.lrn,
+                    lastName: s.lastName,
+                    firstName: s.firstName,
+                    mi: mi,
+                    sex: s.sex || '',
+                    birthday: new Date(s.birthday).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+                    address: s.address,
+                    parentName: s.parentName,
+                    contactNumber: s.contactNumber,
+                    photoLink: photoLink,
+                    idCardLink: idCardLink,
+                    createdAt: new Date(s.createdAt).toLocaleString()
+                });
+            });
+
+            const buffer = await workbook.xlsx.writeBuffer();
+            const fileName = `${section} - Records.xlsx`;
+            
+            const existingExcel = await this.drive.files.list({
+                q: `name='${fileName}' and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and '${folderId}' in parents and trashed=false`,
+                fields: 'files(id)',
+                spaces: 'drive',
+                supportsAllDrives: true,
+                includeItemsFromAllDrives: true
+            });
+
+            if (existingExcel.data.files.length > 0) {
+                const { Readable } = require('stream');
+                await this.drive.files.update({
+                    fileId: existingExcel.data.files[0].id,
+                    media: {
+                        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        body: Readable.from([buffer])
+                    },
+                    supportsAllDrives: true
+                });
+                console.log(`Updated Excel: ${fileName}`);
+                return { success: true, fileId: existingExcel.data.files[0].id };
+            } else {
+                const result = await this.uploadFile(buffer, fileName, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', folderId);
+                console.log(`Created Excel: ${fileName}`);
+                return { success: true, fileId: result.id };
+            }
+        } catch (error) {
+            console.error('Error generating Excel:', error.message);
             return { success: false, error: error.message };
         }
     }
