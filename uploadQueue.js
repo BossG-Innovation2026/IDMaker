@@ -30,30 +30,40 @@ function pump() {
 
 function buildFiles(student) {
   const base = `${student.lastName}_${student.firstName}`;
+  const files = [];
+
   const photoPath = path.join(__dirname, 'uploads', student.photoPath);
-  if (!fs.existsSync(photoPath)) return null;
+  if (!fs.existsSync(photoPath)) {
+    console.error(`Photo file not found: ${photoPath}`);
+    return null;
+  }
 
   const photoExt = path.extname(student.photoPath) || '.jpg';
-  const files = [{
+  files.push({
     key: 'photo',
     name: `${base}_PIC${photoExt}`,
     mimeType: student.photoMime || 'image/jpeg',
     buffer: fs.readFileSync(photoPath)
-  }];
+  });
+  console.log(`Photo ready: ${base}_PIC${photoExt} (${files[0].buffer.length} bytes)`);
 
   if (student.idCardPath) {
     const idPath = path.isAbsolute(student.idCardPath)
       ? student.idCardPath
       : path.join(__dirname, student.idCardPath);
     if (fs.existsSync(idPath)) {
-      const ext = student.idCardPath ? path.extname(student.idCardPath).slice(1) : 'docx';
+      const ext = path.extname(student.idCardPath).slice(1) || 'pdf';
       const isPdf = ext === 'pdf';
+      const buf = fs.readFileSync(idPath);
       files.push({
         key: 'idCard',
         name: `${base}_ID.${ext}`,
         mimeType: isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        buffer: fs.readFileSync(idPath)
+        buffer: buf
       });
+      console.log(`ID Card (${ext.toUpperCase()}) ready: ${base}_ID.${ext} (${buf.length} bytes)`);
+    } else {
+      console.error(`ID Card file not found: ${idPath}`);
     }
   }
 
@@ -61,17 +71,25 @@ function buildFiles(student) {
     const docxPath = path.isAbsolute(student.idCardDocxPath)
       ? student.idCardDocxPath
       : path.join(__dirname, student.idCardDocxPath);
-    if (fs.existsSync(docxPath) && !files.find(f => f.key === 'idCard' && f.name.endsWith('.docx'))) {
-      files.push({
-        key: 'idCardDocx',
-        name: `${base}_ID.docx`,
-        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        buffer: fs.readFileSync(docxPath)
-      });
+    if (fs.existsSync(docxPath)) {
+      const alreadyHasDocx = files.find(f => f.name.endsWith('.docx'));
+      if (!alreadyHasDocx) {
+        const buf = fs.readFileSync(docxPath);
+        files.push({
+          key: 'idCardDocx',
+          name: `${base}_ID.docx`,
+          mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          buffer: buf
+        });
+        console.log(`ID Card (DOCX) ready: ${base}_ID.docx (${buf.length} bytes)`);
+      }
+    } else {
+      console.error(`DOCX file not found: ${docxPath}`);
     }
   }
 
-  return files;
+  console.log(`Total files to upload: ${files.length}`);
+  return files.length > 0 ? files : null;
 }
 
 async function processStudent(id) {
@@ -79,14 +97,14 @@ async function processStudent(id) {
   if (!student) return;
   if (student.uploadStatus === 'uploaded') return;
 
+  console.log(`\n=== Processing upload: ${student.lastName}_${student.firstName} (${student.section}) ===`);
   store.update(id, { uploadStatus: 'uploading', uploadError: null });
 
   const files = buildFiles(student);
   if (!files) {
-    store.update(id, {
-      uploadStatus: 'failed',
-      uploadError: 'Staged files missing on disk (instance restarted?)'
-    });
+    const msg = 'Files missing on disk - ID card generation may have failed';
+    console.error(msg);
+    store.update(id, { uploadStatus: 'failed', uploadError: msg });
     return;
   }
 
@@ -96,12 +114,14 @@ async function processStudent(id) {
       const results = {};
       let sectionFolderId = null;
       for (const file of files) {
+        console.log(`Uploading ${file.name} (${(file.buffer.length / 1024).toFixed(1)}KB) to ${student.section}/...`);
         const result = await googleDrive.uploadStudentPhoto(
           file.buffer, file.name, file.mimeType, student.section
         );
         if (!result.success) throw new Error(result.error || 'upload failed');
         results[file.key] = result;
         if (result.folderId) sectionFolderId = result.folderId;
+        console.log(`Uploaded ${file.name} → ${result.fileLink}`);
       }
 
       const fileLinks = {
@@ -114,6 +134,7 @@ async function processStudent(id) {
         await googleDrive.appendStudentRow(student, fileLinks, sectionFolderId);
         
         const sectionStudents = store.all().filter(s => s.section === student.section);
+        console.log(`Generating Excel for ${student.section} (${sectionStudents.length} students)...`);
         await googleDrive.generateSectionExcel(student.section, sectionStudents, sectionFolderId);
       }
 

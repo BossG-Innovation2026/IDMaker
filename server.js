@@ -72,12 +72,36 @@ app.get('/api/classes', (req, res) => {
 
 // Generate ID card (PDF + DOCX on Render, DOCX locally)
 function generateIDCardFile(student, photoBuf) {
-  const { generateIDCard, generateIDCardDocx } = require('./idCardGenerator');
-  const docxBuffer = generateIDCardDocx(student, photoBuf);
+  const { generateIDCardDocx } = require('./idCardGenerator');
+  
+  let docxBuffer;
+  try {
+    docxBuffer = generateIDCardDocx(student, photoBuf);
+  } catch (e) {
+    console.error('DOCX generation error:', e.message);
+    return { pdfPath: null, docxPath: null };
+  }
+  
+  if (!docxBuffer || docxBuffer.length < 100) {
+    console.error('DOCX buffer is empty or too small:', docxBuffer ? docxBuffer.length : 0);
+    return { pdfPath: null, docxPath: null };
+  }
+  
+  if (docxBuffer[0] !== 0x50 || docxBuffer[1] !== 0x4B) {
+    console.error('DOCX buffer is not a valid ZIP/DOCX file');
+    return { pdfPath: null, docxPath: null };
+  }
   
   const uploadsDir = path.join(__dirname, 'uploads');
   const docxPath = path.join(uploadsDir, `${student.id}_ID.docx`);
-  fs.writeFileSync(docxPath, docxBuffer);
+  
+  try {
+    fs.writeFileSync(docxPath, docxBuffer);
+    console.log(`DOCX saved: ${docxPath} (${docxBuffer.length} bytes)`);
+  } catch (e) {
+    console.error('Failed to write DOCX:', e.message);
+    return { pdfPath: null, docxPath: null };
+  }
   
   try {
     const { execSync } = require('child_process');
@@ -92,13 +116,20 @@ function generateIDCardFile(student, photoBuf) {
     
     if (loPath) {
       const pdfPath = path.join(uploadsDir, `${student.id}_ID.pdf`);
+      console.log(`Converting DOCX to PDF: ${loPath}`);
       execSync(`"${loPath}" --headless --convert-to pdf --outdir "${uploadsDir}" "${docxPath}"`, { timeout: 60000, stdio: 'pipe' });
       if (fs.existsSync(pdfPath)) {
+        const pdfSize = fs.statSync(pdfPath).size;
+        console.log(`PDF saved: ${pdfPath} (${pdfSize} bytes)`);
         return { pdfPath, docxPath };
+      } else {
+        console.error('PDF file not found after conversion');
       }
+    } else {
+      console.warn('LibreOffice not found - PDF conversion skipped');
     }
   } catch (e) {
-    console.error('PDF conversion failed:', e.message);
+    console.error('PDF conversion error:', e.message);
   }
   
   return { pdfPath: null, docxPath };
@@ -191,14 +222,17 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
     try {
       const photoBuf = fs.readFileSync(path.join(__dirname, 'uploads', student.photoPath));
       const result = generateIDCardFile(student, photoBuf);
-      if (result) {
-        if (result.pdfPath && fs.existsSync(result.pdfPath)) {
-          student.idCardPath = result.pdfPath;
-          student.idCardMime = 'application/pdf';
-        }
-        if (result.docxPath && fs.existsSync(result.docxPath)) {
-          student.idCardDocxPath = result.docxPath;
-        }
+      
+      if (result.docxPath && fs.existsSync(result.docxPath)) {
+        student.idCardDocxPath = result.docxPath;
+        console.log(`DOCX ready: ${result.docxPath}`);
+      }
+      if (result.pdfPath && fs.existsSync(result.pdfPath)) {
+        student.idCardPath = result.pdfPath;
+        student.idCardMime = 'application/pdf';
+        console.log(`PDF ready: ${result.pdfPath}`);
+      } else {
+        console.warn('PDF not generated - DOCX will be uploaded only');
       }
     } catch (idCardError) {
       console.error('ID card generation failed:', idCardError.message);
@@ -236,7 +270,9 @@ app.get('/api/students/:id/status', (req, res) => {
     uploadError: student.uploadError,
     driveUploaded: !!student.driveUploaded,
     driveLink: student.driveLink,
-    driveFiles: student.driveFiles || null
+    driveFiles: student.driveFiles || null,
+    hasPdf: !!student.idCardPath,
+    hasDocx: !!student.idCardDocxPath
   });
 });
 

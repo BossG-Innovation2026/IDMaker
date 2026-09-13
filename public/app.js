@@ -4,6 +4,7 @@ let videoStream = null;
 let faceDetectionInterval = null;
 let modelsLoaded = false;
 let capturedPhotoData = null;
+let allChecksPassed = false;
 
 // Barangay data for each town
 const barangays = {
@@ -269,14 +270,12 @@ function setupBirthdayDisplay() {
 
 // Camera Modal Functions
 async function openCameraModal() {
-    console.log('Opening camera modal');
     const modal = document.getElementById('cameraModal');
     modal.classList.remove('hidden');
     
     const captureBtn = document.getElementById('captureBtn');
-    console.log('Capture button found:', captureBtn);
-    captureBtn.removeAttribute('disabled');
-    console.log('Capture button disabled after remove:', captureBtn.disabled);
+    captureBtn.setAttribute('disabled', 'disabled');
+    allChecksPassed = false;
     
     try {
         videoStream = await navigator.mediaDevices.getUserMedia({
@@ -304,6 +303,8 @@ async function openCameraModal() {
         if (modelsLoaded) {
             startFaceDetection();
         } else {
+            allChecksPassed = true;
+            updateCaptureButton();
             updateFaceStatus('Camera ready - position face in center', 'warning');
         }
     } catch (error) {
@@ -350,7 +351,9 @@ function startFaceDetection() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
         if (detections.length === 0) {
-            updateFaceChecks(false, false, false, false);
+            allChecksPassed = false;
+            updateCaptureButton();
+            updateFaceChecks(false, false, false, false, false);
             updateFaceStatus('No face detected - position face in frame', 'warning');
             return;
         }
@@ -385,6 +388,8 @@ function startFaceDetection() {
         });
         
         const allPassed = isCentered && isGoodSize && isGoodBrightness && isWhiteBg;
+        allChecksPassed = allPassed;
+        updateCaptureButton();
         updateFaceChecks(true, isCentered, isGoodSize, isGoodBrightness, isWhiteBg);
         
         const guideOval = document.getElementById('guideOval');
@@ -477,6 +482,17 @@ function resetFaceChecks() {
     ['checkFace', 'checkCenter', 'checkSize', 'checkBg'].forEach(id => {
         document.getElementById(id).className = 'check-item';
     });
+    allChecksPassed = false;
+    updateCaptureButton();
+}
+
+function updateCaptureButton() {
+    const captureBtn = document.getElementById('captureBtn');
+    if (allChecksPassed) {
+        captureBtn.removeAttribute('disabled');
+    } else {
+        captureBtn.setAttribute('disabled', 'disabled');
+    }
 }
 
 function updateFaceStatus(text, type) {
