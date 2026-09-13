@@ -688,11 +688,14 @@ async function handleSubmit(e) {
     const lastName = document.getElementById('lastName').value.trim();
     const section = document.getElementById('classSelect').value;
     
+    showLoading('Checking for duplicates...');
+    
     try {
         const checkRes = await fetch(`${API_URL}/api/students/check-duplicate?firstName=${encodeURIComponent(firstName)}&lastName=${encodeURIComponent(lastName)}&section=${encodeURIComponent(section)}`);
         const checkData = await checkRes.json();
         
         if (checkData.duplicate) {
+            hideLoading();
             const confirmed = confirm(
                 `DUPLICATE WARNING!\n\n` +
                 `A student with name "${checkData.existing.lastName}, ${checkData.existing.firstName}" ` +
@@ -707,11 +710,14 @@ async function handleSubmit(e) {
                 return;
             }
             
+            showLoading('Deleting old entry...');
             await fetch(`${API_URL}/api/students/${checkData.existing.id}`, { method: 'DELETE' });
         }
     } catch (err) {
         console.warn('Duplicate check failed, proceeding:', err);
     }
+    
+    showLoading('Generating ID card...');
     
     const formData = new FormData();
     formData.append('firstName', document.getElementById('firstName').value);
@@ -736,16 +742,20 @@ async function handleSubmit(e) {
         
         if (result.success) {
             currentStudentData = result.student;
+            showLoading('Uploading to Google Drive...');
             showStatus('ID generated successfully!', 'success');
             updateIDPreview(result.student);
             document.getElementById('idPreview').classList.remove('hidden');
             document.getElementById('downloadSection').classList.remove('hidden');
             setDriveNote('Uploading to Google Drive…', 'pending');
             pollUploadStatus(result.student.id);
+            hideLoading();
         } else {
+            hideLoading();
             showStatus(result.error || 'Error saving data', 'info');
         }
     } catch (error) {
+        hideLoading();
         showStatus('Error connecting to server', 'info');
     }
 }
@@ -837,6 +847,29 @@ function showStatus(message, type) {
     status.textContent = message;
     status.className = `status ${type}`;
     status.classList.remove('hidden');
+}
+
+function showLoading(text, subtext) {
+    const overlay = document.getElementById('loadingOverlay');
+    const loadingText = document.getElementById('loadingText');
+    const loadingSubtext = document.getElementById('loadingSubtext');
+    
+    if (text) loadingText.textContent = text;
+    if (subtext) loadingSubtext.textContent = subtext;
+    else loadingSubtext.textContent = 'Please wait';
+    
+    overlay.classList.remove('hidden');
+    
+    const submitBtn = document.querySelector('#studentForm button[type="submit"]');
+    if (submitBtn) submitBtn.setAttribute('disabled', 'disabled');
+}
+
+function hideLoading() {
+    const overlay = document.getElementById('loadingOverlay');
+    overlay.classList.add('hidden');
+    
+    const submitBtn = document.querySelector('#studentForm button[type="submit"]');
+    if (submitBtn) submitBtn.removeAttribute('disabled');
 }
 
 function getFileBaseName() {
