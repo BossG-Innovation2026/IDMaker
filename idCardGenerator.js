@@ -63,6 +63,14 @@ function insertPhoto(zip, documentXml, photoBuffer) {
   // Update the relationships file
   zip.file(relsFileName, relsXml);
 
+  // Register jpeg in [Content_Types].xml
+  const ctFileName = '[Content_Types].xml';
+  let ctXml = zip.file(ctFileName) ? zip.file(ctFileName).asText() : '';
+  if (!ctXml.includes('jpeg')) {
+    ctXml = ctXml.replace('</Types>', '  <Default Extension="jpeg" ContentType="image/jpeg"/>\n</Types>');
+    zip.file(ctFileName, ctXml);
+  }
+
   // Dimensions for the picture box in the template (1193800 × 295275 EMU ≈ 1.31" × 0.32")
   const cx = 1193800;
   const cy = 295275;

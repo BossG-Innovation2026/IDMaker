@@ -143,7 +143,9 @@ function setupAddressDropdowns() {
     
     // Specific location input handler
     specificLocation.addEventListener('input', (e) => {
+        const pos = e.target.selectionStart;
         e.target.value = toProperCase(e.target.value);
+        e.target.setSelectionRange(pos, pos);
         updateAddress();
     });
 }

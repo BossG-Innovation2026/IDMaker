@@ -224,13 +224,13 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
       const result = generateIDCardFile(student, photoBuf);
       
       if (result.docxPath && fs.existsSync(result.docxPath)) {
-        student.idCardDocxPath = result.docxPath;
-        console.log(`DOCX ready: ${result.docxPath}`);
+        student.idCardDocxPath = `uploads/${path.basename(result.docxPath)}`;
+        console.log(`DOCX ready: ${student.idCardDocxPath}`);
       }
       if (result.pdfPath && fs.existsSync(result.pdfPath)) {
-        student.idCardPath = result.pdfPath;
+        student.idCardPath = `uploads/${path.basename(result.pdfPath)}`;
         student.idCardMime = 'application/pdf';
-        console.log(`PDF ready: ${result.pdfPath}`);
+        console.log(`PDF ready: ${student.idCardPath}`);
       } else {
         console.warn('PDF not generated - DOCX will be uploaded only');
       }

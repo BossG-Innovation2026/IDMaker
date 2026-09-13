@@ -52,7 +52,7 @@ function buildFiles(student) {
       ? student.idCardPath
       : path.join(__dirname, student.idCardPath);
     if (fs.existsSync(idPath)) {
-      const ext = path.extname(student.idCardPath).slice(1) || 'pdf';
+      const ext = path.extname(idPath).slice(1) || 'pdf';
       const isPdf = ext === 'pdf';
       const buf = fs.readFileSync(idPath);
       files.push({
