@@ -18,10 +18,10 @@ function getStrandFromSection(section) {
 
 function escapeXml(str) {
   return String(str)
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>')
-    .replace(/"/g, '"');
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 /**
@@ -35,7 +35,13 @@ function buildInlineDrawing(rId, cx, cy) {
 /**
  * Insert the student photo into the DOCX template, replacing the {{picture}} placeholder.
  * Adds the photo to word/media/photo.jpg and a new relationship rIdN → media/photo.jpg.
- * Replaces the {{picture}} text run with an inline drawing element.
+ *
+ * Strategy:
+ * 1. Replace <mc:AlternateContent> blocks containing "picture" with inline drawing.
+ *    These blocks contain <mc:Choice> with <wp:anchor> (legacy textbox) and
+ *    <mc:Fallback> with <v:textbox> containing {{picture}} text.
+ * 2. Remove any remaining standalone <w:r> elements containing {{picture}} text
+ *    that were outside mc:AlternateContent blocks.
  */
 function insertPhoto(zip, documentXml, photoBuffer) {
   const relsFileName = 'word/_rels/document.xml.rels';
@@ -71,71 +77,40 @@ function insertPhoto(zip, documentXml, photoBuffer) {
     zip.file(ctFileName, ctXml);
   }
 
-  // Dimensions for the picture box in the template (1193800 × 295275 EMU ≈ 1.31" × 0.32")
+  // Dimensions for the picture box in the template (1193800 × 295275 EMU)
   const cx = 1193800;
   const cy = 295275;
 
   // Build the inline drawing element with the new relationship ID
   const drawingXml = buildInlineDrawing(newRelId, cx, cy);
 
-  // Replace the {{picture}} run with the drawing element.
-  // The template has {{picture}} split across runs: {{ + picture}}
-  // We need to find the <w:r> element that contains 'picture' in its <w:t> and replace it.
   let result = documentXml;
 
-  // Strategy: Replace ALL runs that are part of {{picture}} with the drawing element.
-  // The template splits {{picture}} as: {{ + picture}}  across multiple <w:r> elements.
-  // We need to replace runs containing '{{', 'picture}}', or '{{picture' with the drawing.
-  
-  // First, find ALL runs and identify which ones contain picture-related text
-  const allRuns = [...result.matchAll(/<w:r\b[^>]*>[\s\S]*?<\/w:r>/g)];
-  
-  // Identify runs to remove (containing {{, picture, or }})
-  // But only remove runs that are part of the {{picture}} placeholder sequence
-  // Strategy: find 'picture' in any run text, then expand to include adjacent {{ and }} runs
-  
-  // Find the run index containing 'picture' in its text
-  let pictureRunIdx = -1;
-  for (let i = 0; i < allRuns.length; i++) {
-    const tMatch = allRuns[i][0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
-    if (tMatch && tMatch[1].includes('picture')) {
-      pictureRunIdx = i;
-      break;
-    }
-  }
-  
-  if (pictureRunIdx >= 0) {
-    // Find the range of runs that are part of {{picture}}
-    // Look backwards for {{ and forwards for }} 
-    let removeStart = pictureRunIdx;
-    let removeEnd = pictureRunIdx;
-    
-    // Check previous run for {{
-    if (pictureRunIdx > 0) {
-      const prevT = allRuns[pictureRunIdx - 1][0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
-      if (prevT && prevT[1].includes('{{')) {
-        removeStart = pictureRunIdx - 1;
+  // STEP 1: Replace <mc:AlternateContent> blocks containing "picture" with inline drawing.
+  // The regex matches <mc:AlternateContent>...</mc:AlternateContent> (non-greedy).
+  // These blocks contain the {{picture}} text inside <v:textbox>/<wps:txbx>.
+  result = result.replace(
+    /<mc:AlternateContent>[\s\S]*?<\/mc:AlternateContent>/g,
+    (match) => {
+      if (match.includes('picture')) {
+        return drawingXml;
       }
+      return match; // keep non-picture mc:AlternateContent blocks unchanged
     }
-    
-    // Check if there are }} runs after
-    for (let i = pictureRunIdx + 1; i < allRuns.length && i <= pictureRunIdx + 3; i++) {
-      const tMatch = allRuns[i][0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
-      if (tMatch && tMatch[1].includes('}}')) {
-        removeEnd = i;
-      } else {
-        break;
+  );
+
+  // STEP 2: Remove any remaining standalone <w:r> elements containing {{picture}} text.
+  // These are runs that were outside mc:AlternateContent blocks.
+  result = result.replace(
+    /<w:r\b[^>]*>[\s\S]*?<\/w:r>/g,
+    (match) => {
+      const tMatch = match.match(/<w:t[^>]*>([^<]*)<\/w:t>/);
+      if (tMatch && (tMatch[1].includes('{{') || tMatch[1].includes('picture') || tMatch[1].includes('}}'))) {
+        return '';
       }
+      return match;
     }
-    
-    // Replace the range: keep first run but replace its text with the drawing element
-    const beforeRange = result.substring(0, allRuns[removeStart].index);
-    const afterRange = result.substring(allRuns[removeEnd].index + allRuns[removeEnd][0].length);
-    
-    // Insert drawing element in place of the first run
-    const drawingXml = buildInlineDrawing(newRelId, cx, cy);
-    result = beforeRange + drawingXml + afterRange;
-  }
+  );
 
   return result;
 }
@@ -267,6 +242,9 @@ function convertDocxToPdf(docxBuffer, studentId) {
 
   try {
     let cmd;
+    const profileDir = path.join(tmpDir, `_lo_profile_${studentId}`);
+    if (!fs.existsSync(profileDir)) fs.mkdirSync(profileDir, { recursive: true });
+
     if (process.platform === 'win32') {
       const loPaths = [
         'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
@@ -274,7 +252,7 @@ function convertDocxToPdf(docxBuffer, studentId) {
       ];
       const loPath = loPaths.find(p => fs.existsSync(p));
       if (!loPath) return null;
-      cmd = `"${loPath}" --headless --convert-to pdf --outdir "${tmpDir}" "${tmpDocx}"`;
+      cmd = `"${loPath}" --headless --norestore --env:UserInstallation="file:///${profileDir.replace(/\\/g, '/')}" --convert-to pdf --outdir "${tmpDir}" "${tmpDocx}"`;
     } else {
       const loPaths = [
         '/usr/bin/libreoffice',
@@ -292,7 +270,7 @@ function convertDocxToPdf(docxBuffer, studentId) {
         } catch (e) {}
       }
       if (!loPath) return null;
-      cmd = `"${loPath}" --headless --convert-to pdf --outdir "${tmpDir}" "${tmpDocx}"`;
+      cmd = `"${loPath}" --headless --norestore --env:UserInstallation="file://${profileDir}" --convert-to pdf --outdir "${tmpDir}" "${tmpDocx}"`;
     }
     execSync(cmd, { timeout: 60000, windowsHide: true, stdio: 'pipe' });
     if (fs.existsSync(tmpPdf)) {
@@ -304,6 +282,7 @@ function convertDocxToPdf(docxBuffer, studentId) {
     console.error('PDF conversion failed:', e.message);
   } finally {
     try { fs.unlinkSync(tmpDocx); } catch (e) {}
+    try { fs.rmSync(profileDir, { recursive: true, force: true }); } catch (e) {}
   }
   return null;
 }
