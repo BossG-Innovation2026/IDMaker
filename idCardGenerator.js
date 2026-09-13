@@ -18,21 +18,31 @@ function getStrandFromSection(section) {
 
 function escapeXml(str) {
   return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/&/g, '&')
+    .replace(/</g, '<')
+    .replace(/>/g, '>')
+    .replace(/"/g, '"');
 }
 
+/**
+ * Build an inline drawing element for the picture placeholder.
+ * Uses the same dimensions as the template's picture box (3648710 × 86360 EMU).
+ */
 function buildInlineDrawing(rId, cx, cy) {
-  return `<w:r><w:rPr><w:rFonts w:ascii="Copperplate Gothic Bold" w:hAnsi="Copperplate Gothic Bold"/><w:spacing w:val="-4"/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="100" name="Student Photo"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><pic:nvPicPr><pic:cNvPr id="100" name="Student Photo"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+  return `<w:r><w:rPr><w:rFonts w:ascii="Copperplate Gothic Bold" w:hAnsi="Copperplate Gothic Bold"/><w:spacing w:val="-4"/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" wp14:anchorId="3EEF1DD2" wp14:editId="0616ACFE"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="100" name="Student Photo"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><pic:nvPicPr><pic:cNvPr id="100" name="Student Photo"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
 }
 
+/**
+ * Insert the student photo into the DOCX template, replacing the {{picture}} placeholder.
+ * Adds the photo to word/media/photo.jpg and a new relationship rIdN → media/photo.jpg.
+ * Replaces the {{picture}} text run with an inline drawing element.
+ */
 function insertPhoto(zip, documentXml, photoBuffer) {
   const relsFileName = 'word/_rels/document.xml.rels';
   let relsXml = zip.file(relsFileName) ? zip.file(relsFileName).asText() :
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
 
+  // Find the maximum existing relationship ID
   const maxIdMatch = relsXml.match(/Id="rId(\d+)"/g);
   let maxId = 0;
   if (maxIdMatch) {
@@ -43,18 +53,43 @@ function insertPhoto(zip, documentXml, photoBuffer) {
   }
   const newRelId = `rId${maxId + 1}`;
 
+  // Add the new relationship
   const newRel = `<Relationship Id="${newRelId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/photo.jpg"/>`;
   relsXml = relsXml.replace('</Relationships>', newRel + '</Relationships>');
 
+  // Add the photo to the DOCX zip
   zip.file('word/media/photo.jpg', photoBuffer);
+
+  // Update the relationships file
   zip.file(relsFileName, relsXml);
 
+  // Dimensions for the picture box in the template (3648710 × 86360 EMU ≈ 5.1cm × 1.2cm)
   const cx = 3648710;
   const cy = 86360;
+
+  // Build the inline drawing element with the new relationship ID
   const drawingXml = buildInlineDrawing(newRelId, cx, cy);
 
-  const pictureRunRe = /<w:r[^>]*><w:rPr>[\s\S]*?<\/w:rPr><w:t[^>]*>picture[\s\S]*?<\/w:t><\/w:r>/g;
-  let result = documentXml.replace(pictureRunRe, drawingXml);
+  // Replace the {{picture}} run with the drawing element.
+  // The template has {{picture}} split across runs: {{ + picture}}
+  // We need to find the <w:r> element that contains 'picture' in its <w:t> and replace it.
+  let result = documentXml;
+
+  // Strategy: Replace any <w:r> that contains 'picture' in its text content with the drawing element
+  const pictureRunRegex = /<w:r[^>]*>[\s\S]*?<w:t[^>]*>picture<\/w:t>[^\n]*?<\/w:r>/gi;
+  result = result.replace(pictureRunRegex, (match) => {
+    // For each match, rebuild the run with the drawing element
+    // Keep the original rPr (formatting) from the first run
+    const rPrMatch = match.match(/<w:rPr>([\s\S]*?)<\/w:rPr>/);
+    const rPr = rPrMatch ? rPrMatch[1] : '';
+    // Build the new run: rPr + drawing element (without the closing </w:r> since we'll add it)
+    // Actually, let's just replace the entire run xml
+    return buildInlineDrawing(newRelId, cx, cy);
+  });
+
+  // Also handle the case where picture appears without the opening braces (just the text)
+  const pictureTextRegex = /<w:t[^>]*>picture<\/w:t>/g;
+  result = result.replace(pictureTextRegex, '<w:t></w:t>');
 
   return result;
 }
