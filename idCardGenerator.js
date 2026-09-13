@@ -16,6 +16,95 @@ function getStrandFromSection(section) {
   return 'ACADEMIC';
 }
 
+function escapeXml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function replacePlaceholdersInXml(documentXml, replacements) {
+  const runRe = /<w:r\b[^>]*>[\s\S]*?<\/w:r>/g;
+  const runs = [];
+  let m;
+  while ((m = runRe.exec(documentXml)) !== null) {
+    const full = m[0];
+    const tMatch = full.match(/<w:t\b([^>]*)>([\s\S]*?)<\/w:t>/);
+    runs.push({
+      runXml: full,
+      tAttrs: tMatch ? tMatch[1] : null,
+      text: tMatch ? tMatch[2] : null,
+      docStart: m.index,
+      docEnd: m.index + full.length
+    });
+  }
+
+  const texts = runs.map(r => r.text !== null ? r.text : '');
+  const concat = texts.join('');
+
+  const charAction = new Array(concat.length).fill('keep');
+  const replaceMap = new Map();
+
+  const tagList = Object.keys(replacements).sort((a, b) => b.length - a.length);
+  for (const tag of tagList) {
+    let from = 0;
+    while (from < concat.length) {
+      const idx = concat.indexOf(tag, from);
+      if (idx === -1) break;
+      const dominated = [...replaceMap.keys()].some(k => k >= idx && k < idx + tag.length);
+      if (!dominated) {
+        for (let i = idx; i < idx + tag.length; i++) {
+          charAction[i] = (i === idx) ? 'replace' : 'skip';
+        }
+        replaceMap.set(idx, replacements[tag]);
+      }
+      from = idx + 1;
+    }
+  }
+
+  const newTexts = [];
+  let concatOffset = 0;
+  for (let i = 0; i < texts.length; i++) {
+    const origLen = texts[i].length;
+    let newT = '';
+    for (let j = 0; j < origLen; j++) {
+      const gIdx = concatOffset + j;
+      if (charAction[gIdx] === 'keep') {
+        newT += concat[gIdx];
+      } else if (charAction[gIdx] === 'replace') {
+        newT += replaceMap.get(gIdx);
+      }
+    }
+    newTexts.push(newT);
+    concatOffset += origLen;
+  }
+
+  const parts = [];
+  let scanPos = 0;
+  for (let i = 0; i < runs.length; i++) {
+    parts.push(documentXml.substring(scanPos, runs[i].docStart));
+
+    if (runs[i].text === null) {
+      parts.push(runs[i].runXml);
+    } else {
+      const nt = newTexts[i];
+      let attrs = runs[i].tAttrs || '';
+      if (nt.length > 0 && (nt[0] === ' ' || nt[nt.length - 1] === ' ')) {
+        if (!attrs.includes('xml:space')) {
+          attrs += ' xml:space="preserve"';
+        }
+      }
+      const newT = `<w:t${attrs}>${escapeXml(nt)}</w:t>`;
+      const newRunXml = runs[i].runXml.replace(/<w:t\b[^>]*>[\s\S]*?<\/w:t>/, newT);
+      parts.push(newRunXml);
+    }
+    scanPos = runs[i].docEnd;
+  }
+  parts.push(documentXml.substring(scanPos));
+  return parts.join('');
+}
+
 function generateIDCardDocx(student) {
   const templateBuf = fs.readFileSync(TEMPLATE_PATH);
   const zip = new PizZip(templateBuf);
@@ -42,35 +131,44 @@ function generateIDCardDocx(student) {
   };
 
   let documentXml = zip.file('word/document.xml').asText();
-  for (const [tag, value] of Object.entries(replacements)) {
-    while (documentXml.includes(tag)) {
-      documentXml = documentXml.replace(tag, value);
-    }
-  }
+  documentXml = replacePlaceholdersInXml(documentXml, replacements);
   zip.file('word/document.xml', documentXml);
   return zip.generate({ type: 'nodebuffer' });
 }
 
 function convertDocxToPdf(docxBuffer, studentId) {
   const tmpDir = path.join(__dirname, 'uploads');
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+
   const tmpDocx = path.join(tmpDir, `_tmp_${studentId}.docx`);
   const tmpPdf = path.join(tmpDir, `_tmp_${studentId}.pdf`);
-
   fs.writeFileSync(tmpDocx, docxBuffer);
 
   try {
-    execSync(
-      `libreoffice --headless --convert-to pdf --outdir "${tmpDir}" "${tmpDocx}"`,
-      { timeout: 30000, windowsHide: true, stdio: 'pipe' }
-    );
-    const pdfBuffer = fs.readFileSync(tmpPdf);
-    try { fs.unlinkSync(tmpPdf); } catch(e) {}
-    return pdfBuffer;
-  } catch(e) {
-    return null;
+    let cmd;
+    if (process.platform === 'win32') {
+      const loPaths = [
+        'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
+        'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe'
+      ];
+      const loPath = loPaths.find(p => fs.existsSync(p));
+      if (!loPath) return null;
+      cmd = `"${loPath}" --headless --convert-to pdf --outdir "${tmpDir}" "${tmpDocx}"`;
+    } else {
+      cmd = `libreoffice --headless --convert-to pdf --outdir "${tmpDir}" "${tmpDocx}"`;
+    }
+    execSync(cmd, { timeout: 60000, windowsHide: true, stdio: 'pipe' });
+    if (fs.existsSync(tmpPdf)) {
+      const pdfBuffer = fs.readFileSync(tmpPdf);
+      try { fs.unlinkSync(tmpPdf); } catch (e) {}
+      return pdfBuffer;
+    }
+  } catch (e) {
+    console.error('PDF conversion failed:', e.message);
   } finally {
-    try { fs.unlinkSync(tmpDocx); } catch(e) {}
+    try { fs.unlinkSync(tmpDocx); } catch (e) {}
   }
+  return null;
 }
 
 function generateIDCard(student) {
