@@ -5,6 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install LibreOffice + font tools
 RUN apt-get update && \
     apt-get install -y \
+    libreoffice \
     libreoffice-writer \
     fontconfig \
     fonts-liberation && \

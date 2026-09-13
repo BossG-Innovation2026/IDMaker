@@ -116,8 +116,15 @@ function generateIDCardFile(student, photoBuf) {
     
     if (loPath) {
       const pdfPath = path.join(uploadsDir, `${student.id}_ID.pdf`);
+      const userProfile = path.join(uploadsDir, `lo_profile_${student.id}`);
       console.log(`Converting DOCX to PDF: ${loPath}`);
-      execSync(`"${loPath}" --headless --convert-to pdf --outdir "${uploadsDir}" "${docxPath}"`, { timeout: 60000, stdio: 'pipe' });
+      try { fs.mkdirSync(userProfile, { recursive: true }); } catch(e) {}
+      const cmd = `"${loPath}" --headless --norestore --convert-to pdf --outdir "${uploadsDir}" --env:UserInstallation="file://${userProfile}" "${docxPath}"`;
+      let stderr = '';
+      try {
+        stderr = execSync(cmd, { timeout: 60000, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }).toString();
+      } catch(e) { stderr = (e.stderr || e.message).toString(); }
+      console.log(`LibreOffice stderr: ${stderr.substring(0, 500)}`);
       if (fs.existsSync(pdfPath)) {
         const pdfSize = fs.statSync(pdfPath).size;
         console.log(`PDF saved: ${pdfPath} (${pdfSize} bytes)`);

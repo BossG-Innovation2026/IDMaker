@@ -63,11 +63,11 @@ function insertPhoto(zip, documentXml, photoBuffer) {
   // Update the relationships file
   zip.file(relsFileName, relsXml);
 
-  // Register jpeg in [Content_Types].xml
+  // Register jpg/jpeg in [Content_Types].xml (file is photo.jpg)
   const ctFileName = '[Content_Types].xml';
   let ctXml = zip.file(ctFileName) ? zip.file(ctFileName).asText() : '';
-  if (!ctXml.includes('jpeg')) {
-    ctXml = ctXml.replace('</Types>', '  <Default Extension="jpeg" ContentType="image/jpeg"/>\n</Types>');
+  if (!ctXml.includes('jpg') && !ctXml.includes('jpeg')) {
+    ctXml = ctXml.replace('</Types>', '  <Default Extension="jpg" ContentType="image/jpeg"/>\n</Types>');
     zip.file(ctFileName, ctXml);
   }
 
