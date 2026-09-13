@@ -48,8 +48,8 @@ function buildFiles(student) {
     if (fs.existsSync(idPath)) {
       files.push({
         key: 'idCard',
-    name: `${base}_ID.docx`,
-    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    name: `${base}_ID.${student.idCardPath ? path.extname(student.idCardPath).slice(1) : 'docx'}`,
+    mimeType: student.idCardMime || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         buffer: fs.readFileSync(idPath)
       });
     }

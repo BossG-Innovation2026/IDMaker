@@ -1,10 +1,9 @@
-const Docxtemplater = require('docxtemplater');
-const PizZip = require('pizzip');
 const fs = require('fs');
 const path = require('path');
+const PizZip = require('pizzip');
+const { execSync } = require('child_process');
 
 const TEMPLATE_PATH = path.join(__dirname, 'templates', 'id-template.docx');
-const PLACEHOLDER_DIR = path.join(__dirname, 'public', 'placeholders');
 
 function getStrandFromSection(section) {
   if (!section) return 'ACADEMIC';
@@ -17,90 +16,67 @@ function getStrandFromSection(section) {
   return 'ACADEMIC';
 }
 
-async function generateIDCardPDF(student, photoPath) {
+function generateIDCardDocx(student) {
   const templateBuf = fs.readFileSync(TEMPLATE_PATH);
   const zip = new PizZip(templateBuf);
-  const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
-
-  const fullName = student.middleName
-    ? `${student.firstName} ${student.middleName} ${student.lastName}`
-    : `${student.firstName} ${student.lastName}`;
 
   const mi = student.middleName ? student.middleName.charAt(0) + '.' : '';
-
   const formattedDate = new Date(student.birthday).toLocaleDateString('en-US', {
     year: 'numeric', month: 'long', day: 'numeric'
   });
 
-  doc.render({
-    FIRSTNAME: (student.firstName || '').toUpperCase(),
-    MIDDLENAME: student.middleName ? student.middleName.toUpperCase() : '',
-    LASTNAME: (student.lastName || '').toUpperCase(),
-    MI: mi.toUpperCase(),
-    LRN: student.lrn || '',
-    STUDENT_NO: student.studentNo || '',
-    SECTION: student.section || '',
-    STRAND: getStrandFromSection(student.section),
-    BIRTHDAY: formattedDate,
-    ADDRESS: student.address || '',
-    PARENT: (student.parentName || '').toUpperCase(),
-    CONTACT: student.contactNumber || ''
-  });
+  const replacements = {
+    '{{FIRSTNAME}}': (student.firstName || '').toUpperCase(),
+    '{{MIDDLENAME}}': student.middleName ? student.middleName.toUpperCase() : '',
+    '{{LASTNAME}}': (student.lastName || '').toUpperCase(),
+    '{{M.I.}}': mi.toUpperCase(),
+    '{{BIRTHDAY}}': formattedDate,
+    '{{SEX}}': student.sex || '',
+    '{{ADDRESS}}': student.address || '',
+    '{{GUARDIAN}}': (student.parentName || '').toUpperCase(),
+    '{{CONTACT}}': student.contactNumber || '',
+    '{{LRN}}': student.lrn || '',
+    '{{SECTION}}': student.section || '',
+    '{{STUDENT_NO}}': student.studentNo || '',
+    '{{STRAND}}': getStrandFromSection(student.section)
+  };
 
-  const docxBuffer = doc.getZip().generate({ type: 'nodebuffer' });
+  let documentXml = zip.file('word/document.xml').asText();
+  for (const [tag, value] of Object.entries(replacements)) {
+    while (documentXml.includes(tag)) {
+      documentXml = documentXml.replace(tag, value);
+    }
+  }
+  zip.file('word/document.xml', documentXml);
+  return zip.generate({ type: 'nodebuffer' });
+}
 
-  const outDir = path.join(__dirname, 'uploads');
-  const tmpDocx = path.join(outDir, `_tmp_id_${student.id || Date.now()}.docx`);
+function convertDocxToPdf(docxBuffer, studentId) {
+  const tmpDir = path.join(__dirname, 'uploads');
+  const tmpDocx = path.join(tmpDir, `_tmp_${studentId}.docx`);
+  const tmpPdf = path.join(tmpDir, `_tmp_${studentId}.pdf`);
+
   fs.writeFileSync(tmpDocx, docxBuffer);
 
   try {
-    const { execSync } = require('child_process');
-    const tmpPdf = tmpDocx.replace('.docx', '.pdf');
-
-    try {
-      execSync(`libreoffice --headless --convert-to pdf --outdir "${outDir}" "${tmpPdf.replace('.pdf', '.docx')}"`, {
-        timeout: 30000,
-        windowsHide: true
-      });
-      const pdfBuf = fs.readFileSync(tmpPdf);
-      try { fs.unlinkSync(tmpPdf); } catch(e) {}
-      return pdfBuf;
-    } catch(e) {
-      console.log('LibreOffice not available, returning .docx instead of PDF');
-      return docxBuffer;
-    }
+    execSync(
+      `libreoffice --headless --convert-to pdf --outdir "${tmpDir}" "${tmpDocx}"`,
+      { timeout: 30000, windowsHide: true, stdio: 'pipe' }
+    );
+    const pdfBuffer = fs.readFileSync(tmpPdf);
+    try { fs.unlinkSync(tmpPdf); } catch(e) {}
+    return pdfBuffer;
+  } catch(e) {
+    return null;
   } finally {
     try { fs.unlinkSync(tmpDocx); } catch(e) {}
   }
 }
 
-function generateIDCardDocx(student, photoPath) {
-  const templateBuf = fs.readFileSync(TEMPLATE_PATH);
-  const zip = new PizZip(templateBuf);
-  const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
-
-  const mi = student.middleName ? student.middleName.charAt(0) + '.' : '';
-
-  const formattedDate = new Date(student.birthday).toLocaleDateString('en-US', {
-    year: 'numeric', month: 'long', day: 'numeric'
-  });
-
-  doc.render({
-    FIRSTNAME: (student.firstName || '').toUpperCase(),
-    MIDDLENAME: student.middleName ? student.middleName.toUpperCase() : '',
-    LASTNAME: (student.lastName || '').toUpperCase(),
-    MI: mi.toUpperCase(),
-    LRN: student.lrn || '',
-    STUDENT_NO: student.studentNo || '',
-    SECTION: student.section || '',
-    STRAND: getStrandFromSection(student.section),
-    BIRTHDAY: formattedDate,
-    ADDRESS: student.address || '',
-    PARENT: (student.parentName || '').toUpperCase(),
-    CONTACT: student.contactNumber || ''
-  });
-
-  return doc.getZip().generate({ type: 'nodebuffer' });
+function generateIDCard(student) {
+  const docxBuffer = generateIDCardDocx(student);
+  const pdfBuffer = convertDocxToPdf(docxBuffer, student.id || Date.now().toString());
+  return pdfBuffer || docxBuffer;
 }
 
-module.exports = { generateIDCardPDF, generateIDCardDocx };
+module.exports = { generateIDCard, generateIDCardDocx };

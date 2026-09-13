@@ -7,7 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 const googleDrive = require('./googleDrive');
 const store = require('./store');
 const uploadQueue = require('./uploadQueue');
-const { generateIDCardDocx } = require('./idCardGenerator');
+const { generateIDCard } = require('./idCardGenerator');
 
 // Load env vars in development
 if (process.env.NODE_ENV !== 'production') {
@@ -70,10 +70,9 @@ app.get('/api/classes', (req, res) => {
   res.json(classes);
 });
 
-// Generate ID card DOCX server-side (returns buffer)
-function generateIDCard(student) {
-  const photoPath = path.join(__dirname, 'uploads', student.photoPath);
-  return generateIDCardDocx(student, photoPath);
+// Generate ID card (PDF on Render, DOCX locally)
+function generateIDCardFile(student) {
+  return generateIDCard(student);
 }
 
 function present(student) {
@@ -127,13 +126,17 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    // Generate ID card DOCX on disk for background upload
+    // Generate ID card on disk for background upload
     try {
-      const idCardBuffer = generateIDCard(student);
+      const idCardBuffer = generateIDCardFile(student);
       if (idCardBuffer) {
-        const idName = `${student.id}_ID.docx`;
+        const isPdf = idCardBuffer[0] === 0x25 && idCardBuffer[1] === 0x50;
+        const ext = isPdf ? 'pdf' : 'docx';
+        const mime = isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        const idName = `${student.id}_ID.${ext}`;
         fs.writeFileSync(path.join(__dirname, 'uploads', idName), idCardBuffer);
         student.idCardPath = path.join('uploads', idName);
+        student.idCardMime = mime;
       }
     } catch (idCardError) {
       console.error('ID card generation failed:', idCardError.message);

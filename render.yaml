@@ -3,7 +3,7 @@ services:
     name: id-making-app
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: apt-get update && apt-get install -y libreoffice-writer && npm install
     startCommand: node server.js
     envVars:
       - key: NODE_ENV
