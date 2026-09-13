@@ -24,6 +24,41 @@ function escapeXml(str) {
     .replace(/"/g, '&quot;');
 }
 
+function buildInlineDrawing(rId, cx, cy) {
+  return `<w:r><w:rPr><w:rFonts w:ascii="Copperplate Gothic Bold" w:hAnsi="Copperplate Gothic Bold"/><w:spacing w:val="-4"/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="100" name="Student Photo"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><pic:nvPicPr><pic:cNvPr id="100" name="Student Photo"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+}
+
+function insertPhoto(zip, documentXml, photoBuffer) {
+  const relsFileName = 'word/_rels/document.xml.rels';
+  let relsXml = zip.file(relsFileName) ? zip.file(relsFileName).asText() :
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
+
+  const maxIdMatch = relsXml.match(/Id="rId(\d+)"/g);
+  let maxId = 0;
+  if (maxIdMatch) {
+    maxIdMatch.forEach(m => {
+      const id = parseInt(m.match(/\d+/)[0]);
+      if (id > maxId) maxId = id;
+    });
+  }
+  const newRelId = `rId${maxId + 1}`;
+
+  const newRel = `<Relationship Id="${newRelId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/photo.jpg"/>`;
+  relsXml = relsXml.replace('</Relationships>', newRel + '</Relationships>');
+
+  zip.file('word/media/photo.jpg', photoBuffer);
+  zip.file(relsFileName, relsXml);
+
+  const cx = 3648710;
+  const cy = 86360;
+  const drawingXml = buildInlineDrawing(newRelId, cx, cy);
+
+  const pictureRunRe = /<w:r[^>]*><w:rPr>[\s\S]*?<\/w:rPr><w:t[^>]*>picture[\s\S]*?<\/w:t><\/w:r>/g;
+  let result = documentXml.replace(pictureRunRe, drawingXml);
+
+  return result;
+}
+
 function replacePlaceholdersInXml(documentXml, replacements) {
   const runRe = /<w:r\b[^>]*>[\s\S]*?<\/w:r>/g;
   const runs = [];
@@ -105,7 +140,7 @@ function replacePlaceholdersInXml(documentXml, replacements) {
   return parts.join('');
 }
 
-function generateIDCardDocx(student) {
+function generateIDCardDocx(student, photoBuffer) {
   const templateBuf = fs.readFileSync(TEMPLATE_PATH);
   const zip = new PizZip(templateBuf);
 
@@ -132,6 +167,11 @@ function generateIDCardDocx(student) {
 
   let documentXml = zip.file('word/document.xml').asText();
   documentXml = replacePlaceholdersInXml(documentXml, replacements);
+
+  if (photoBuffer) {
+    documentXml = insertPhoto(zip, documentXml, photoBuffer);
+  }
+
   zip.file('word/document.xml', documentXml);
   return zip.generate({ type: 'nodebuffer' });
 }
@@ -171,8 +211,8 @@ function convertDocxToPdf(docxBuffer, studentId) {
   return null;
 }
 
-function generateIDCard(student) {
-  const docxBuffer = generateIDCardDocx(student);
+function generateIDCard(student, photoBuffer) {
+  const docxBuffer = generateIDCardDocx(student, photoBuffer);
   const pdfBuffer = convertDocxToPdf(docxBuffer, student.id || Date.now().toString());
   return pdfBuffer || docxBuffer;
 }

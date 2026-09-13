@@ -128,7 +128,8 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
 
     // Generate ID card on disk for background upload
     try {
-      const idCardBuffer = generateIDCardFile(student);
+      const photoBuf = fs.readFileSync(path.join(__dirname, 'uploads', student.photoPath));
+      const idCardBuffer = generateIDCardFile(student, photoBuf);
       if (idCardBuffer) {
         const isPdf = idCardBuffer[0] === 0x25 && idCardBuffer[1] === 0x50;
         const ext = isPdf ? 'pdf' : 'docx';
