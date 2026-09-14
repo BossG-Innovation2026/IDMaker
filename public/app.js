@@ -592,6 +592,7 @@ function captureWithCanvas(video) {
 }
 
 async function detectAndCrop(source) {
+    let faceBox = null;
     if (modelsLoaded) {
         try {
             const detections = await faceapi
@@ -600,51 +601,53 @@ async function detectAndCrop(source) {
                 const detection = detections.reduce((prev, current) =>
                     (prev.detection.box.area > current.detection.box.area) ? prev : current
                 );
-                capturedPhotoData = cropToFace(source, detection.detection.box);
+                faceBox = detection.detection.box;
             }
         } catch (err) {
             console.warn('Face detection on captured image failed:', err);
         }
     }
+    capturedPhotoData = cropToSquare(source, faceBox);
     closeCameraModal();
     showPreviewModal();
 }
 
-function cropToFace(sourceCanvas, faceBox) {
-    const cropCanvas = document.createElement('canvas');
-    const ctx = cropCanvas.getContext('2d');
-    
-    // Calculate square crop area centered on face
-    // Use the larger dimension (width or height) as base for square
-    const padding = 0.6; // More padding for ID photo style
-    const faceSize = Math.max(faceBox.width, faceBox.height);
-    const squareSize = faceSize * (1 + padding * 2);
-    
-    // Center the square on the face
-    const faceCenterX = faceBox.x + faceBox.width / 2;
-    const faceCenterY = faceBox.y + faceBox.height / 2;
-    
-    const cropX = Math.max(0, faceCenterX - squareSize / 2);
-    const cropY = Math.max(0, faceCenterY - squareSize / 2);
-    
-    // Ensure crop doesn't go beyond canvas bounds
-    const actualCropX = Math.min(cropX, sourceCanvas.width - squareSize);
-    const actualCropY = Math.min(cropY, sourceCanvas.height - squareSize);
-    
-    // Output as perfect square - ID photo standard size
-    const targetSize = 600; // 600x600px square
-    
-    cropCanvas.width = targetSize;
-    cropCanvas.height = targetSize;
-    
-    // Draw the cropped square region
-    ctx.drawImage(
-        sourceCanvas, 
-        actualCropX, actualCropY, squareSize, squareSize,
-        0, 0, targetSize, targetSize
-    );
-    
-    return cropCanvas.toDataURL('image/jpeg', 0.92);
+function cropToSquare(source, faceBox) {
+    const w = source.naturalWidth || source.width;
+    const h = source.naturalHeight || source.height;
+
+    let cx, cy, cropSize;
+
+    if (faceBox) {
+        const faceCX = faceBox.x + faceBox.width / 2;
+        const faceCY = faceBox.y + faceBox.height / 2;
+        const faceDim = Math.max(faceBox.width, faceBox.height);
+        cropSize = faceDim * 2.2;
+        cx = faceCX;
+        cy = faceCY;
+    } else {
+        cropSize = Math.min(w, h);
+        cx = w / 2;
+        cy = h / 2;
+    }
+
+    let sx = Math.round(cx - cropSize / 2);
+    let sy = Math.round(cy - cropSize / 2);
+
+    if (sx < 0) sx = 0;
+    if (sy < 0) sy = 0;
+    if (sx + cropSize > w) sx = w - cropSize;
+    if (sy + cropSize > h) sy = h - cropSize;
+    if (sx < 0) sx = 0;
+    if (sy < 0) sy = 0;
+
+    const out = document.createElement('canvas');
+    const size = 600;
+    out.width = size;
+    out.height = size;
+    const ctx = out.getContext('2d');
+    ctx.drawImage(source, sx, sy, cropSize, cropSize, 0, 0, size, size);
+    return out.toDataURL('image/jpeg', 0.92);
 }
 
 function showPreviewModal() {
