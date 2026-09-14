@@ -240,10 +240,8 @@ function convertDocxToPdf(docxBuffer, studentId) {
   const tmpPdf = path.join(tmpDir, `_tmp_${studentId}.pdf`);
   fs.writeFileSync(tmpDocx, docxBuffer);
 
-  try {
-    let cmd;
-    const profileDir = path.join(tmpDir, `_lo_profile_${studentId}`);
-    if (!fs.existsSync(profileDir)) fs.mkdirSync(profileDir, { recursive: true });
+  const profileDir = path.join(tmpDir, `_lo_profile_${studentId}`);
+  if (!fs.existsSync(profileDir)) fs.mkdirSync(profileDir, { recursive: true });
 
     if (process.platform === 'win32') {
       const loPaths = [
@@ -252,7 +250,7 @@ function convertDocxToPdf(docxBuffer, studentId) {
       ];
       const loPath = loPaths.find(p => fs.existsSync(p));
       if (!loPath) return null;
-      cmd = `"${loPath}" --headless --norestore --env:UserInstallation="file:///${profileDir.replace(/\\/g, '/')}" --convert-to pdf --outdir "${tmpDir}" "${tmpDocx}"`;
+      cmd = `"${loPath}" --headless --norestore --nolockcheck --env:UserInstallation="file:///${profileDir.replace(/\\/g, '/')}" --convert-to pdf --outdir "${tmpDir}" "${tmpDocx}"`;
     } else {
       const loPaths = [
         '/usr/bin/libreoffice',
@@ -270,7 +268,7 @@ function convertDocxToPdf(docxBuffer, studentId) {
         } catch (e) {}
       }
       if (!loPath) return null;
-      cmd = `"${loPath}" --headless --norestore --env:UserInstallation="file://${profileDir}" --convert-to pdf --outdir "${tmpDir}" "${tmpDocx}"`;
+      cmd = `"${loPath}" --headless --norestore --nolockcheck --convert-to pdf --outdir "${tmpDir}" --env:UserInstallation="file://${profileDir}" "${tmpDocx}"`;
     }
     execSync(cmd, { timeout: 60000, windowsHide: true, stdio: 'pipe' });
     if (fs.existsSync(tmpPdf)) {
