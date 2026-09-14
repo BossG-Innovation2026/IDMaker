@@ -89,17 +89,17 @@ function insertPhoto(zip, documentXml, photoBuffer) {
       const cx = extentMatch ? parseInt(extentMatch[1]) : 1193800;
       const cy = extentMatch ? parseInt(extentMatch[2]) : 295275;
 
-      // Build the blipFill with face crop:
+      // Build the blipFill with face crop — NO xmlns redeclarations (already on doc root)
       // srcRect: crop 20% from each side horizontally, keep top 40% vertically
-      // Values in 1/1000ths of a percent (100000 = 100%)
-      const blipFill = `<a:blipFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:blip r:embed="${newRelId}"/><a:srcRect l="20000" t="0" r="20000" b="60000"/><a:stretch><a:fillRect/></a:stretch></a:blipFill>`;
+      const blipFill = `<a:blipFill><a:blip r:embed="${newRelId}"/><a:srcRect l="20000" t="0" r="20000" b="60000"/><a:stretch><a:fillRect/></a:stretch></a:blipFill>`;
 
       // Build the new wps:wsp as a picture shape (not a text box)
-      const newWsp = `<wps:wsp xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:cNvSpPr><a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeArrowheads="1"/></wps:cNvSpPr><wps:spPr bwMode="auto" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${blipFill}<a:ln w="9525"><a:noFill/></a:ln></wps:spPr><wps:bodyPr rot="0" vert="horz" wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t" anchorCtr="0"><a:noAutofit xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/></wps:bodyPr></wps:wsp>`;
+      // No inline xmlns — all namespaces already declared on <w:document>
+      const newWsp = `<wps:wsp><wps:cNvSpPr><a:spLocks noChangeArrowheads="1"/></wps:cNvSpPr><wps:spPr bwMode="auto"><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${blipFill}<a:ln w="9525"><a:noFill/></a:ln></wps:spPr><wps:bodyPr rot="0" vert="horz" wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t" anchorCtr="0"><a:noAutofit/></wps:bodyPr></wps:wsp>`;
 
-      // Rebuild the anchor keeping all positioning but swapping the graphicData content
-      const newGraphicData = `<a:graphicData xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">${newWsp}</a:graphicData>`;
-      const newGraphic = `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">${newGraphicData}</a:graphic>`;
+      // Rebuild graphicData/graphic keeping existing namespace attributes from the anchor
+      const newGraphicData = `<a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">${newWsp}</a:graphicData>`;
+      const newGraphic = `<a:graphic>${newGraphicData}</a:graphic>`;
 
       // Replace only the graphic element inside the anchor, keep everything else
       const newAnchorInner = anchorInner.replace(
