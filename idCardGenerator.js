@@ -25,126 +25,27 @@ function escapeXml(str) {
 }
 
 /**
- * Insert the student photo into the DOCX template, replacing the {{picture}} placeholder.
- *
- * Strategy:
- * The {{picture}} placeholder lives inside a <wps:wsp> text box anchored via <wp:anchor>.
- * Rather than trying to insert a <wp:inline> drawing inside the text box (which LibreOffice
- * ignores), we convert the wps:wsp shape itself into a picture frame:
- *   1. Remove txBox="1" from wps:cNvSpPr  → shape is no longer a text box
- *   2. Replace <a:noFill/> with <a:blipFill> pointing to the photo
- *   3. Remove <wps:txbx>...</wps:txbx>  → no text content
- *   4. Replace <wps:bodyPr> with minimal body props
- *   5. Keep the entire <wp:anchor> positioning intact
- *
- * srcRect crops to the face region: center 60% width, top 40% height.
+ * Insert the student photo into the DOCX template by replacing the placeholder image.
+ * 
+ * Strategy: The template has an image placeholder (image1.jpeg → rId4).
+ * We simply replace that image file in the ZIP with the student photo.
+ * All positioning, sizing, and formatting stays intact.
  */
 function insertPhoto(zip, documentXml, photoBuffer) {
-  const relsFileName = 'word/_rels/document.xml.rels';
-  let relsXml = zip.file(relsFileName) ? zip.file(relsFileName).asText() :
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
-
-  const maxIdMatch = relsXml.match(/Id="rId(\d+)"/g);
-  let maxId = 0;
-  if (maxIdMatch) {
-    maxIdMatch.forEach(m => {
-      const id = parseInt(m.match(/\d+/)[0]);
-      if (id > maxId) maxId = id;
-    });
-  }
-  const newRelId = `rId${maxId + 1}`;
-
-  relsXml = relsXml.replace('</Relationships>',
-    `<Relationship Id="${newRelId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/photo.jpg"/></Relationships>`);
-  zip.file('word/media/photo.jpg', photoBuffer);
-  zip.file(relsFileName, relsXml);
-
-  const ctFileName = '[Content_Types].xml';
-  let ctXml = zip.file(ctFileName) ? zip.file(ctFileName).asText() : '';
-  if (!ctXml.includes('jpg') && !ctXml.includes('jpeg')) {
-    ctXml = ctXml.replace('</Types>', '  <Default Extension="jpg" ContentType="image/jpeg"/>\n</Types>');
-    zip.file(ctFileName, ctXml);
+  // Replace the placeholder image file with the student photo
+  // The template uses image1.jpeg as the photo placeholder
+  const photoPlaceholder = 'word/media/image1.jpeg';
+  
+  if (zip.file(photoPlaceholder)) {
+    zip.file(photoPlaceholder, photoBuffer);
+    console.log(`Replaced ${photoPlaceholder} with student photo (${photoBuffer.length} bytes)`);
+  } else {
+    console.warn(`Photo placeholder ${photoPlaceholder} not found in template — photo not inserted`);
   }
 
-  let result = documentXml;
-
-  // Match the outer <w:r> that wraps the picture mc:AlternateContent block
-  result = result.replace(
-    /<w:r\b[^>]*>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?<mc:AlternateContent>([\s\S]*?)<\/mc:AlternateContent><\/w:r>/g,
-    (fullMatch, mcContent) => {
-      if (!mcContent.includes('picture}}') && !mcContent.includes('{{picture')) {
-        return fullMatch;
-      }
-
-      // Extract only the positioning attributes we need from the original anchor
-      // positionH offset
-      const posHMatch = mcContent.match(/<wp:positionH[^>]*relativeFrom="([^"]+)"[^>]*><wp:posOffset>(-?\d+)<\/wp:posOffset>/);
-      const posVMatch = mcContent.match(/<wp:positionV[^>]*relativeFrom="([^"]+)"[^>]*><wp:posOffset>(-?\d+)<\/wp:posOffset>/);
-      const extentMatch = mcContent.match(/<wp:extent cx="(\d+)" cy="(\d+)"\/>/);
-      const anchorAttrsMatch = mcContent.match(/<wp:anchor([^>]*)>/);
-
-      const cx = extentMatch ? parseInt(extentMatch[1]) : 1193800;
-      const cy = extentMatch ? parseInt(extentMatch[2]) : 295275;
-      const posHFrom = posHMatch ? posHMatch[1] : 'column';
-      const posHVal  = posHMatch ? posHMatch[2] : '-139700';
-      const posVFrom = posVMatch ? posVMatch[1] : 'paragraph';
-      const posVVal  = posVMatch ? posVMatch[2] : '986155';
-      const anchorAttrs = anchorAttrsMatch ? anchorAttrsMatch[1] : ' distT="45720" distB="45720" distL="114300" distR="114300" simplePos="0" relativeHeight="251681792" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1"';
-
-      // Build the complete anchor XML from scratch — no regex manipulation of existing XML
-      const photoAnchor =
-        `<w:r><w:rPr><w:noProof/></w:rPr><w:drawing>` +
-        `<wp:anchor${anchorAttrs}>` +
-          `<wp:simplePos x="0" y="0"/>` +
-          `<wp:positionH relativeFrom="${posHFrom}"><wp:posOffset>${posHVal}</wp:posOffset></wp:positionH>` +
-          `<wp:positionV relativeFrom="${posVFrom}"><wp:posOffset>${posVVal}</wp:posOffset></wp:positionV>` +
-          `<wp:extent cx="${cx}" cy="${cy}"/>` +
-          `<wp:effectExtent l="0" t="0" r="0" b="0"/>` +
-          `<wp:wrapSquare wrapText="bothSides"/>` +
-          `<wp:docPr id="12" name="Student Photo"/>` +
-          `<wp:cNvGraphicFramePr/>` +
-          `<a:graphic>` +
-            `<a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">` +
-              `<wps:wsp>` +
-                `<wps:cNvSpPr><a:spLocks noChangeArrowheads="1"/></wps:cNvSpPr>` +
-                `<wps:spPr bwMode="auto">` +
-                  `<a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
-                  `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>` +
-                  `<a:blipFill>` +
-                    `<a:blip r:embed="${newRelId}"/>` +
-                    `<a:srcRect l="20000" t="0" r="20000" b="60000"/>` +
-                    `<a:stretch><a:fillRect/></a:stretch>` +
-                  `</a:blipFill>` +
-                  `<a:ln w="9525"><a:noFill/></a:ln>` +
-                `</wps:spPr>` +
-                `<wps:bodyPr rot="0" vert="horz" wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t" anchorCtr="0">` +
-                  `<a:noAutofit/>` +
-                `</wps:bodyPr>` +
-              `</wps:wsp>` +
-            `</a:graphicData>` +
-          `</a:graphic>` +
-          `<wp14:sizeRelH relativeFrom="margin"><wp14:pctWidth>0</wp14:pctWidth></wp14:sizeRelH>` +
-          `<wp14:sizeRelV relativeFrom="margin"><wp14:pctHeight>0</wp14:pctHeight></wp14:sizeRelV>` +
-        `</wp:anchor>` +
-        `</w:drawing></w:r>`;
-
-      return photoAnchor;
-    }
-  );
-
-  // STEP 2: Remove any remaining standalone {{picture}} runs
-  result = result.replace(
-    /<w:r\b[^>]*>[\s\S]*?<\/w:r>/g,
-    (match) => {
-      const tMatch = match.match(/<w:t[^>]*>([^<]*)<\/w:t>/);
-      if (tMatch && (tMatch[1].includes('{{') || tMatch[1].includes('picture') || tMatch[1].includes('}}'))) {
-        return '';
-      }
-      return match;
-    }
-  );
-
-  return result;
+  // No XML changes needed — the existing <a:blip r:embed="rId4"/> 
+  // already references the image we just replaced
+  return documentXml;
 }
 
 function replacePlaceholdersInXml(documentXml, replacements) {
