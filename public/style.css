@@ -642,29 +642,47 @@ body {
 }
 
 .guide-oval {
-    width: 140px;
-    height: 180px;
-    border: 3px dashed rgba(255, 255, 255, 0.5);
-    border-radius: 50%;
+    width: 200px;
+    height: 200px;
+    border: 3px dashed rgba(255, 255, 255, 0.6);
+    border-radius: 8px;
     transition: all 0.3s ease;
+    background: rgba(255, 255, 255, 0.05);
+    position: relative;
+}
+
+.guide-oval::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60%;
+    height: 40%;
+    border: 1px dashed rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
 }
 
 .guide-oval.detected {
     border-color: var(--success);
     box-shadow: 0 0 20px rgba(72, 187, 120, 0.5);
+    background: rgba(72, 187, 120, 0.1);
 }
 
 .guide-oval.centered {
     border-color: var(--success);
     border-style: solid;
+    border-width: 4px;
 }
 
 .guide-oval.warning {
     border-color: #dd6b20;
+    background: rgba(221, 107, 32, 0.1);
 }
 
 .guide-oval.error {
     border-color: #e53e3e;
+    background: rgba(229, 62, 62, 0.1);
 }
 
 /* Face Status */

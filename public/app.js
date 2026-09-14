@@ -615,19 +615,35 @@ function cropToFace(sourceCanvas, faceBox) {
     const cropCanvas = document.createElement('canvas');
     const ctx = cropCanvas.getContext('2d');
     
-    const padding = 0.4;
-    const cropW = faceBox.width * (1 + padding * 2);
-    const cropH = faceBox.height * (1 + padding * 2);
-    const cropX = Math.max(0, faceBox.x - faceBox.width * padding);
-    const cropY = Math.max(0, faceBox.y - faceBox.height * padding);
+    // Calculate square crop area centered on face
+    // Use the larger dimension (width or height) as base for square
+    const padding = 0.6; // More padding for ID photo style
+    const faceSize = Math.max(faceBox.width, faceBox.height);
+    const squareSize = faceSize * (1 + padding * 2);
     
-    const targetW = 400;
-    const targetH = 500;
+    // Center the square on the face
+    const faceCenterX = faceBox.x + faceBox.width / 2;
+    const faceCenterY = faceBox.y + faceBox.height / 2;
     
-    cropCanvas.width = targetW;
-    cropCanvas.height = targetH;
+    const cropX = Math.max(0, faceCenterX - squareSize / 2);
+    const cropY = Math.max(0, faceCenterY - squareSize / 2);
     
-    ctx.drawImage(sourceCanvas, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH);
+    // Ensure crop doesn't go beyond canvas bounds
+    const actualCropX = Math.min(cropX, sourceCanvas.width - squareSize);
+    const actualCropY = Math.min(cropY, sourceCanvas.height - squareSize);
+    
+    // Output as perfect square - ID photo standard size
+    const targetSize = 600; // 600x600px square
+    
+    cropCanvas.width = targetSize;
+    cropCanvas.height = targetSize;
+    
+    // Draw the cropped square region
+    ctx.drawImage(
+        sourceCanvas, 
+        actualCropX, actualCropY, squareSize, squareSize,
+        0, 0, targetSize, targetSize
+    );
     
     return cropCanvas.toDataURL('image/jpeg', 0.92);
 }
