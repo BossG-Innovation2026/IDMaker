@@ -25,30 +25,40 @@ function escapeXml(str) {
 }
 
 /**
- * Build an inline drawing element for the picture placeholder.
- * Uses the same dimensions as the template's picture box (1193800 × 295275 EMU ≈ 1.31" × 0.32").
+ * Build a photo drawing that fits inside the text box frame.
+ * srcRect crops the photo to the top-center region to zoom into the face.
+ * The frame is very wide (4:1 ratio), so we crop the photo vertically to show
+ * only the upper portion (face area) and horizontally center it.
+ *
+ * srcRect values are in 1/1000ths of a percent (100000 = 100%).
+ * l/r crop sides horizontally, t/b crop top/bottom.
+ * For a portrait photo (3:4), to fill a 4:1 frame we need to show ~20% of
+ * the photo height. We take the top 20% centered horizontally.
  */
-function buildInlineDrawing(rId, cx, cy) {
-  return `<w:r><w:rPr><w:rFonts w:ascii="Copperplate Gothic Bold" w:hAnsi="Copperplate Gothic Bold"/><w:spacing w:val="-4"/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" wp14:anchorId="3EEF1DD2" wp14:editId="0616ACFE"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="100" name="Student Photo"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><pic:nvPicPr><pic:cNvPr id="100" name="Student Photo"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+function buildPhotoDrawing(rId, cx, cy) {
+  // Crop: show top 25% of photo height (face region), centered horizontally.
+  // For a typical portrait photo this puts the face in frame.
+  // l=25000 r=25000 = crop 25% from each side (keep center 50% width)
+  // t=0 b=75000 = crop bottom 75% (keep top 25% height)
+  const srcRect = `l="20000" t="0" r="20000" b="60000"`;
+  return `<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="100" name="Student Photo"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="0"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><pic:nvPicPr><pic:cNvPr id="100" name="Student Photo"/><pic:cNvPicPr><a:picLocks noChangeAspect="0"/></pic:cNvPicPr></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rId}"/><a:srcRect ${srcRect}/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>`;
 }
 
 /**
  * Insert the student photo into the DOCX template, replacing the {{picture}} placeholder.
- * Adds the photo to word/media/photo.jpg and a new relationship rIdN → media/photo.jpg.
  *
  * Strategy:
- * 1. Replace <mc:AlternateContent> blocks containing "picture" with inline drawing.
- *    These blocks contain <mc:Choice> with <wp:anchor> (legacy textbox) and
- *    <mc:Fallback> with <v:textbox> containing {{picture}} text.
- * 2. Remove any remaining standalone <w:r> elements containing {{picture}} text
- *    that were outside mc:AlternateContent blocks.
+ * 1. Find mc:AlternateContent blocks containing the actual {{picture}} placeholder
+ *    (check for 'picture}}' not just 'picture' to avoid false positives from XML namespaces).
+ * 2. Keep the mc:Choice section intact (preserves wp:anchor frame position/size/wrapping).
+ * 3. Inside wps:txbxContent, replace the {{picture}} runs with the photo drawing.
+ * 4. Photo is sized to the effective area (box minus padding) and cropped to face region.
  */
 function insertPhoto(zip, documentXml, photoBuffer) {
   const relsFileName = 'word/_rels/document.xml.rels';
   let relsXml = zip.file(relsFileName) ? zip.file(relsFileName).asText() :
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
 
-  // Find the maximum existing relationship ID
   const maxIdMatch = relsXml.match(/Id="rId(\d+)"/g);
   let maxId = 0;
   if (maxIdMatch) {
@@ -59,17 +69,11 @@ function insertPhoto(zip, documentXml, photoBuffer) {
   }
   const newRelId = `rId${maxId + 1}`;
 
-  // Add the new relationship
-  const newRel = `<Relationship Id="${newRelId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/photo.jpg"/>`;
-  relsXml = relsXml.replace('</Relationships>', newRel + '</Relationships>');
-
-  // Add the photo to the DOCX zip
+  relsXml = relsXml.replace('</Relationships>',
+    `<Relationship Id="${newRelId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/photo.jpg"/></Relationships>`);
   zip.file('word/media/photo.jpg', photoBuffer);
-
-  // Update the relationships file
   zip.file(relsFileName, relsXml);
 
-  // Register jpg/jpeg in [Content_Types].xml (file is photo.jpg)
   const ctFileName = '[Content_Types].xml';
   let ctXml = zip.file(ctFileName) ? zip.file(ctFileName).asText() : '';
   if (!ctXml.includes('jpg') && !ctXml.includes('jpeg')) {
@@ -77,61 +81,61 @@ function insertPhoto(zip, documentXml, photoBuffer) {
     zip.file(ctFileName, ctXml);
   }
 
-  // Dimensions for the picture box in the template (1193800 × 295275 EMU)
-  const cx = 1193800;
-  const cy = 295275;
-
-  // Build the inline drawing element with the new relationship ID
-  const drawingXml = buildInlineDrawing(newRelId, cx, cy);
-
   let result = documentXml;
 
-  // STEP 1: Replace <mc:AlternateContent> blocks containing "picture" with inline drawing.
-  // The regex matches <mc:AlternateContent>...</mc:AlternateContent> (non-greedy).
-  // These blocks contain the {{picture}} text inside <v:textbox>/<wps:txbx>.
-  // IMPORTANT: Some mc:AlternateContent blocks contain BOTH picture AND other content (like Birthday).
-  // We need to preserve the non-picture content while replacing only the picture drawing.
+  // STEP 1: Find mc:AlternateContent blocks with the actual {{picture}} placeholder.
+  // 'picture}}' avoids false positives from XML namespace URIs like /drawingml/2006/picture.
   result = result.replace(
     /<mc:AlternateContent>[\s\S]*?<\/mc:AlternateContent>/g,
     (match) => {
-      if (match.includes('picture')) {
-        // Extract and preserve content from the mc:Fallback section that isn't picture-related
-        // The mc:Fallback contains <v:textbox> with <w:txbxContent> that may have non-picture text
-        const fallbackMatch = match.match(/<mc:Fallback>([\s\S]*?)<\/mc:Fallback>/);
-        let preservedContent = '';
-        
-        if (fallbackMatch) {
-          const fallbackContent = fallbackMatch[1];
-          // Extract <w:txbxContent> from the fallback
-          const txbxMatch = fallbackContent.match(/<w:txbxContent>([\s\S]*?)<\/w:txbxContent>/);
-          if (txbxMatch) {
-            const txbxContent = txbxMatch[1];
-            // Find runs that don't contain picture-related text
-            const runRe = /<w:r\b[^>]*>[\s\S]*?<\/w:r>/g;
-            let runMatch;
-            while ((runMatch = runRe.exec(txbxContent)) !== null) {
-              const runXml = runMatch[0];
-              // Check if this run contains {{ or }} or picture
-              const tMatch = runXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/);
-              if (tMatch) {
-                const text = tMatch[1];
-                if (!text.includes('{{') && !text.includes('}}') && !text.includes('picture')) {
-                  preservedContent += runXml;
-                }
-              }
-            }
-          }
-        }
-        
-        // Return the preserved content plus the new inline drawing
-        return preservedContent + drawingXml;
+      if (!match.includes('picture}}') && !match.includes('{{picture')) {
+        return match;
       }
-      return match; // keep non-picture mc:AlternateContent blocks unchanged
+
+      // Extract mc:Choice (contains wp:anchor + wps:wsp text box — the frame)
+      const choiceMatch = match.match(/<mc:Choice[^>]*>([\s\S]*?)<\/mc:Choice>/);
+      if (!choiceMatch) return match;
+
+      let choiceContent = choiceMatch[1];
+
+      // Read box dimensions from wp:extent
+      const extentMatch = choiceContent.match(/<wp:extent[^>]*cx="(\d+)"[^>]*cy="(\d+)"/);
+      let boxCx = 1193800, boxCy = 295275;
+      if (extentMatch) {
+        boxCx = parseInt(extentMatch[1]);
+        boxCy = parseInt(extentMatch[2]);
+      }
+
+      // Read padding from wps:bodyPr
+      const bodyPrMatch = choiceContent.match(/wps:bodyPr[^>]*lIns="(\d+)"[^>]*tIns="(\d+)"[^>]*rIns="(\d+)"[^>]*bIns="(\d+)"/);
+      let lIns = 0, tIns = 0, rIns = 0, bIns = 0;
+      if (bodyPrMatch) {
+        lIns = parseInt(bodyPrMatch[1]);
+        tIns = parseInt(bodyPrMatch[2]);
+        rIns = parseInt(bodyPrMatch[3]);
+        bIns = parseInt(bodyPrMatch[4]);
+      }
+
+      // Effective drawing area = box minus padding
+      const drawCx = boxCx - lIns - rIns;
+      const drawCy = boxCy - tIns - bIns;
+
+      // Build photo drawing sized to the effective area
+      const photoDrawing = buildPhotoDrawing(newRelId, drawCx, drawCy);
+
+      // Replace wps:txbxContent: remove {{picture}} runs, insert photo drawing
+      choiceContent = choiceContent.replace(
+        /<wps:txbxContent>[\s\S]*?<\/wps:txbxContent>/,
+        `<wps:txbxContent><w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r>${photoDrawing}</w:r></w:p></wps:txbxContent>`
+      );
+
+      // Reconstruct: replace mc:Choice content, drop mc:Fallback (no longer needed)
+      const newChoice = `<mc:Choice Requires="wps">${choiceContent}</mc:Choice>`;
+      return `<mc:AlternateContent>${newChoice}</mc:AlternateContent>`;
     }
   );
 
-  // STEP 2: Remove any remaining standalone <w:r> elements containing {{picture}} text.
-  // These are runs that were outside mc:AlternateContent blocks.
+  // STEP 2: Remove any remaining standalone {{picture}} runs outside mc blocks
   result = result.replace(
     /<w:r\b[^>]*>[\s\S]*?<\/w:r>/g,
     (match) => {
