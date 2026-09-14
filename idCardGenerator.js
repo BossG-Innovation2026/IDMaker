@@ -32,8 +32,6 @@ function escapeXml(str) {
  * All positioning, sizing, and formatting stays intact.
  */
 function insertPhoto(zip, documentXml, photoBuffer) {
-  // Replace the placeholder image file with the student photo
-  // The template uses image1.jpeg as the photo placeholder
   const photoPlaceholder = 'word/media/image1.jpeg';
   
   if (zip.file(photoPlaceholder)) {
@@ -43,8 +41,38 @@ function insertPhoto(zip, documentXml, photoBuffer) {
     console.warn(`Photo placeholder ${photoPlaceholder} not found in template — photo not inserted`);
   }
 
-  // No XML changes needed — the existing <a:blip r:embed="rId4"/> 
-  // already references the image we just replaced
+  // Enlarge the photo frame: find the wp:anchor containing rId4 and bump its extents
+  const anchorStart = documentXml.indexOf('<wp:anchor', documentXml.indexOf('r:embed="rId4"'));
+  const anchorEnd = documentXml.indexOf('</wp:anchor>', documentXml.indexOf('r:embed="rId4"'));
+  if (anchorStart >= 0 && anchorEnd > anchorStart) {
+    let anchor = documentXml.substring(anchorStart, anchorEnd + 12);
+    const newCx = '2200000';
+    const newCy = '2200000';
+
+    // Replace wp:extent cx and cy
+    const wpExtIdx = anchor.indexOf('<wp:extent');
+    if (wpExtIdx >= 0) {
+      const wpExtEnd = anchor.indexOf('/>', wpExtIdx) + 2;
+      anchor = anchor.substring(0, wpExtIdx) +
+        '<wp:extent cx="' + newCx + '" cy="' + newCy + '"/>' +
+        anchor.substring(wpExtEnd);
+    }
+
+    // Replace pic:spPr a:xfrm a:ext
+    const spPrIdx = anchor.indexOf('<a:ext cx="');
+    if (spPrIdx >= 0) {
+      const spPrEnd = anchor.indexOf('/>', spPrIdx) + 2;
+      anchor = anchor.substring(0, spPrIdx) +
+        '<a:ext cx="' + newCx + '" cy="' + newCy + '"/>' +
+        anchor.substring(spPrEnd);
+    }
+
+    // Remove noChangeAspect lock
+    anchor = anchor.replace(/noChangeAspect="1"/g, 'noChangeAspect="0"');
+
+    documentXml = documentXml.substring(0, anchorStart) + anchor + documentXml.substring(anchorEnd + 12);
+  }
+
   return documentXml;
 }
 
