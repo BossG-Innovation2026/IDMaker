@@ -16,10 +16,10 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Node.js
+# Install Node.js and npm
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get update && \
-    apt-get install -y nodejs && \
+    apt-get install -y nodejs npm && \
     rm -rf /var/lib/apt/lists/*
 
 # Verify Node.js and npm are installed
