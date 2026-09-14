@@ -5,6 +5,7 @@ let faceDetectionInterval = null;
 let modelsLoaded = false;
 let capturedPhotoData = null;
 let allChecksPassed = false;
+const REQUIRE_WHITE_BG = false; // Set to true to re-enable white background check
 
 // Barangay data for each town
 const barangays = {
@@ -423,11 +424,11 @@ function startFaceDetection() {
         const brightness = await checkBrightness(video, box);
         const isGoodBrightness = brightness > 40 && brightness < 220;
         
-        // STRICTER white background check
         const bgWhiteness = await checkBackgroundWhiteness(video, box);
-        const isWhiteBg = bgWhiteness > 200; // Increased from 170 to 200 (much stricter)
+        const isWhiteBg = bgWhiteness > 200;
+        const whiteBgOK = REQUIRE_WHITE_BG ? isWhiteBg : true;
         
-        ctx.strokeStyle = isCentered && isGoodSize && isWhiteBg && isStraight ? '#48bb78' : '#dd6b20';
+        ctx.strokeStyle = isCentered && isGoodSize && whiteBgOK && isStraight ? '#48bb78' : '#dd6b20';
         ctx.lineWidth = 3;
         ctx.strokeRect(box.x, box.y, box.width, box.height);
         
@@ -438,7 +439,7 @@ function startFaceDetection() {
             ctx.fill();
         });
         
-        const allPassed = isCentered && isGoodSize && isGoodBrightness && isWhiteBg && isStraight;
+        const allPassed = isCentered && isGoodSize && isGoodBrightness && whiteBgOK && isStraight;
         allChecksPassed = allPassed;
         updateCaptureButton();
         updateFaceChecks(true, isCentered, isGoodSize, isGoodBrightness, isWhiteBg, isStraight);
@@ -448,9 +449,6 @@ function startFaceDetection() {
         if (allPassed) {
             guideOval.classList.add('detected', 'centered');
             updateFaceStatus('Perfect! Ready to capture', 'success');
-        } else if (!isWhiteBg) {
-            guideOval.classList.add('warning');
-            updateFaceStatus('Use a plain white background', 'warning');
         } else if (!isStraight) {
             guideOval.classList.add('warning');
             updateFaceStatus('Face forward — do not tilt your head', 'warning');
