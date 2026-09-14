@@ -657,10 +657,10 @@ body {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 60%;
-    height: 40%;
+    width: 70%;
+    height: 70%;
     border: 1px dashed rgba(255, 255, 255, 0.3);
-    border-radius: 50%;
+    border-radius: 8px;
 }
 
 .guide-oval.detected {

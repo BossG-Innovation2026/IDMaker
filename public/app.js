@@ -372,8 +372,8 @@ function startFaceDetection() {
         const faceCenterX = box.x + box.width / 2;
         const isCentered = Math.abs(faceCenterX - videoWidth / 2) < videoWidth * 0.15;
         
-        // Check if face size is appropriate
-        const isGoodSize = box.width > videoWidth * 0.15 && box.width < videoWidth * 0.6;
+        // Check if face size is appropriate (face should be 30-50% of frame for 70% fill in crop)
+        const isGoodSize = box.width > videoWidth * 0.18 && box.width < videoWidth * 0.55;
         
         // Check face rotation/tilt using landmarks
         const leftEye = landmarks.getLeftEye();
@@ -622,7 +622,7 @@ function cropToSquare(source, faceBox) {
         const faceCX = faceBox.x + faceBox.width / 2;
         const faceCY = faceBox.y + faceBox.height / 2;
         const faceDim = Math.max(faceBox.width, faceBox.height);
-        cropSize = faceDim * 2.2;
+        cropSize = faceDim / 0.7;
         cx = faceCX;
         cy = faceCY;
     } else {
