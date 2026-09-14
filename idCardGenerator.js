@@ -243,6 +243,8 @@ function convertDocxToPdf(docxBuffer, studentId) {
   const profileDir = path.join(tmpDir, `_lo_profile_${studentId}`);
   if (!fs.existsSync(profileDir)) fs.mkdirSync(profileDir, { recursive: true });
 
+  try {
+    let cmd;
     if (process.platform === 'win32') {
       const loPaths = [
         'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
