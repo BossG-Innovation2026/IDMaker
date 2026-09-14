@@ -83,55 +83,81 @@ function insertPhoto(zip, documentXml, photoBuffer) {
 
   let result = documentXml;
 
-  // STEP 1: Find mc:AlternateContent blocks with the actual {{picture}} placeholder.
-  // 'picture}}' avoids false positives from XML namespace URIs like /drawingml/2006/picture.
+  // STEP 1: Find <w:r> elements that wrap mc:AlternateContent blocks containing {{picture}}.
+  // Template structure: <w:r><w:rPr>...</w:rPr><mc:AlternateContent>...</mc:AlternateContent></w:r>
+  // We must match the entire outer <w:r> to avoid leaving a dangling </w:r>.
   result = result.replace(
-    /<mc:AlternateContent>[\s\S]*?<\/mc:AlternateContent>/g,
-    (match) => {
-      if (!match.includes('picture}}') && !match.includes('{{picture')) {
-        return match;
+    /<w:r\b[^>]*>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?<mc:AlternateContent>([\s\S]*?)<\/mc:AlternateContent><\/w:r>/g,
+    (fullMatch, mcContent) => {
+      const block = `<mc:AlternateContent>${mcContent}</mc:AlternateContent>`;
+
+      if (!block.includes('picture}}') && !block.includes('{{picture')) {
+        return fullMatch; // not a picture block — leave untouched
       }
 
-      // Extract mc:Choice (contains wp:anchor + wps:wsp text box — the frame)
-      const choiceMatch = match.match(/<mc:Choice[^>]*>([\s\S]*?)<\/mc:Choice>/);
-      if (!choiceMatch) return match;
+      // Extract mc:Choice (wp:anchor + wps:wsp frame)
+      const choiceMatch = block.match(/<mc:Choice[^>]*>([\s\S]*?)<\/mc:Choice>/);
+      if (!choiceMatch) return fullMatch;
 
       let choiceContent = choiceMatch[1];
 
-      // Read box dimensions from wp:extent
+      // Read frame dimensions from wp:extent
       const extentMatch = choiceContent.match(/<wp:extent[^>]*cx="(\d+)"[^>]*cy="(\d+)"/);
       let boxCx = 1193800, boxCy = 295275;
-      if (extentMatch) {
-        boxCx = parseInt(extentMatch[1]);
-        boxCy = parseInt(extentMatch[2]);
-      }
+      if (extentMatch) { boxCx = parseInt(extentMatch[1]); boxCy = parseInt(extentMatch[2]); }
 
       // Read padding from wps:bodyPr
       const bodyPrMatch = choiceContent.match(/wps:bodyPr[^>]*lIns="(\d+)"[^>]*tIns="(\d+)"[^>]*rIns="(\d+)"[^>]*bIns="(\d+)"/);
       let lIns = 0, tIns = 0, rIns = 0, bIns = 0;
       if (bodyPrMatch) {
-        lIns = parseInt(bodyPrMatch[1]);
-        tIns = parseInt(bodyPrMatch[2]);
-        rIns = parseInt(bodyPrMatch[3]);
-        bIns = parseInt(bodyPrMatch[4]);
+        lIns = parseInt(bodyPrMatch[1]); tIns = parseInt(bodyPrMatch[2]);
+        rIns = parseInt(bodyPrMatch[3]); bIns = parseInt(bodyPrMatch[4]);
       }
 
-      // Effective drawing area = box minus padding
       const drawCx = boxCx - lIns - rIns;
       const drawCy = boxCy - tIns - bIns;
-
-      // Build photo drawing sized to the effective area
       const photoDrawing = buildPhotoDrawing(newRelId, drawCx, drawCy);
 
-      // Replace wps:txbxContent: remove {{picture}} runs, insert photo drawing
+      // Replace wps:txbxContent with photo drawing
       choiceContent = choiceContent.replace(
         /<wps:txbxContent>[\s\S]*?<\/wps:txbxContent>/,
-        `<wps:txbxContent><w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r>${photoDrawing}</w:r></w:p></wps:txbxContent>`
+        `<wps:txbxContent><w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="0"/></w:pPr><w:r>${photoDrawing}</w:r></w:p></wps:txbxContent>`
       );
 
-      // Reconstruct: replace mc:Choice content, drop mc:Fallback (no longer needed)
-      const newChoice = `<mc:Choice Requires="wps">${choiceContent}</mc:Choice>`;
-      return `<mc:AlternateContent>${newChoice}</mc:AlternateContent>`;
+      // Return just the mc:AlternateContent (no outer <w:r> — the original had one but it only
+      // served as a container; the anchor drawing stands on its own in the paragraph)
+      return `<mc:AlternateContent><mc:Choice Requires="wps">${choiceContent}</mc:Choice></mc:AlternateContent>`;
+    }
+  );
+
+  // Also handle mc:AlternateContent NOT wrapped in <w:r> (belt-and-suspenders)
+  result = result.replace(
+    /(?<!<\/w:rPr>)<mc:AlternateContent>([\s\S]*?)<\/mc:AlternateContent>/g,
+    (match, mcContent) => {
+      if (!match.includes('picture}}') && !match.includes('{{picture')) return match;
+
+      const choiceMatch = match.match(/<mc:Choice[^>]*>([\s\S]*?)<\/mc:Choice>/);
+      if (!choiceMatch) return match;
+      let choiceContent = choiceMatch[1];
+
+      const extentMatch = choiceContent.match(/<wp:extent[^>]*cx="(\d+)"[^>]*cy="(\d+)"/);
+      let boxCx = 1193800, boxCy = 295275;
+      if (extentMatch) { boxCx = parseInt(extentMatch[1]); boxCy = parseInt(extentMatch[2]); }
+
+      const bodyPrMatch = choiceContent.match(/wps:bodyPr[^>]*lIns="(\d+)"[^>]*tIns="(\d+)"[^>]*rIns="(\d+)"[^>]*bIns="(\d+)"/);
+      let lIns = 0, tIns = 0, rIns = 0, bIns = 0;
+      if (bodyPrMatch) { lIns = parseInt(bodyPrMatch[1]); tIns = parseInt(bodyPrMatch[2]); rIns = parseInt(bodyPrMatch[3]); bIns = parseInt(bodyPrMatch[4]); }
+
+      const drawCx = boxCx - lIns - rIns;
+      const drawCy = boxCy - tIns - bIns;
+      const photoDrawing = buildPhotoDrawing(newRelId, drawCx, drawCy);
+
+      choiceContent = choiceContent.replace(
+        /<wps:txbxContent>[\s\S]*?<\/wps:txbxContent>/,
+        `<wps:txbxContent><w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="0"/></w:pPr><w:r>${photoDrawing}</w:r></w:p></wps:txbxContent>`
+      );
+
+      return `<mc:AlternateContent><mc:Choice Requires="wps">${choiceContent}</mc:Choice></mc:AlternateContent>`;
     }
   );
 
