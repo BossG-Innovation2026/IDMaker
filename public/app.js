@@ -50,6 +50,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadModels();
     await loadClasses();
     setupEventListeners();
+    restoreFormData();
 });
 
 async function loadModels() {
@@ -106,6 +107,35 @@ function setupEventListeners() {
             reader.readAsDataURL(file);
         }
     });
+}
+
+const FORM_FIELDS = ['firstName','middleName','lastName','sex','birthday','lrn','classSelect','town','barangay','specificLocation','parentName','contactNumber'];
+const FORM_STORAGE_KEY = 'idmaker_form_data';
+
+function saveFormData() {
+    const data = {};
+    FORM_FIELDS.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) data[id] = el.value;
+    });
+    try { localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(data)); } catch(e) {}
+}
+
+function restoreFormData() {
+    try {
+        const raw = localStorage.getItem(FORM_STORAGE_KEY);
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        FORM_FIELDS.forEach(id => {
+            const el = document.getElementById(id);
+            if (el && data[id] !== undefined) el.value = data[id];
+        });
+        // Trigger town change to repopulate barangay
+        const townEl = document.getElementById('town');
+        if (townEl && townEl.value) {
+            townEl.dispatchEvent(new Event('change'));
+        }
+    } catch(e) {}
 }
 
 // Address dropdowns
@@ -802,6 +832,7 @@ async function confirmAndGenerate() {
             currentStudentData = result.student;
             showLoading('Uploading to Google Drive...');
             showStatus('ID generated successfully!', 'success');
+            saveFormData();
             updateIDPreview(result.student);
             document.getElementById('idPreview').classList.remove('hidden');
             document.getElementById('downloadSection').classList.remove('hidden');
