@@ -72,49 +72,63 @@ function insertPhoto(zip, documentXml, photoBuffer) {
   result = result.replace(
     /<w:r\b[^>]*>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?<mc:AlternateContent>([\s\S]*?)<\/mc:AlternateContent><\/w:r>/g,
     (fullMatch, mcContent) => {
-      const block = `<mc:AlternateContent>${mcContent}</mc:AlternateContent>`;
-      if (!block.includes('picture}}') && !block.includes('{{picture')) {
+      if (!mcContent.includes('picture}}') && !mcContent.includes('{{picture')) {
         return fullMatch;
       }
 
-      // Extract the wp:anchor element (the full positioned frame)
-      const anchorMatch = block.match(/<wp:anchor([\s\S]*?)<\/wp:anchor>/);
-      if (!anchorMatch) return fullMatch;
+      // Extract only the positioning attributes we need from the original anchor
+      // positionH offset
+      const posHMatch = mcContent.match(/<wp:positionH[^>]*relativeFrom="([^"]+)"[^>]*><wp:posOffset>(-?\d+)<\/wp:posOffset>/);
+      const posVMatch = mcContent.match(/<wp:positionV[^>]*relativeFrom="([^"]+)"[^>]*><wp:posOffset>(-?\d+)<\/wp:posOffset>/);
+      const extentMatch = mcContent.match(/<wp:extent cx="(\d+)" cy="(\d+)"\/>/);
+      const anchorAttrsMatch = mcContent.match(/<wp:anchor([^>]*)>/);
 
-      const anchorAttrs = anchorMatch[0].match(/<wp:anchor([^>]*)>/);
-      const anchorInner = anchorMatch[1];
-
-      // Extract extent (frame size)
-      const extentMatch = anchorInner.match(/<wp:extent[^/]* cx="(\d+)"[^/]* cy="(\d+)"\/>/);
       const cx = extentMatch ? parseInt(extentMatch[1]) : 1193800;
       const cy = extentMatch ? parseInt(extentMatch[2]) : 295275;
+      const posHFrom = posHMatch ? posHMatch[1] : 'column';
+      const posHVal  = posHMatch ? posHMatch[2] : '-139700';
+      const posVFrom = posVMatch ? posVMatch[1] : 'paragraph';
+      const posVVal  = posVMatch ? posVMatch[2] : '986155';
+      const anchorAttrs = anchorAttrsMatch ? anchorAttrsMatch[1] : ' distT="45720" distB="45720" distL="114300" distR="114300" simplePos="0" relativeHeight="251681792" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1"';
 
-      // Build the blipFill with face crop — NO xmlns redeclarations (already on doc root)
-      // srcRect: crop 20% from each side horizontally, keep top 40% vertically
-      const blipFill = `<a:blipFill><a:blip r:embed="${newRelId}"/><a:srcRect l="20000" t="0" r="20000" b="60000"/><a:stretch><a:fillRect/></a:stretch></a:blipFill>`;
+      // Build the complete anchor XML from scratch — no regex manipulation of existing XML
+      const photoAnchor =
+        `<w:r><w:rPr><w:noProof/></w:rPr><w:drawing>` +
+        `<wp:anchor${anchorAttrs}>` +
+          `<wp:simplePos x="0" y="0"/>` +
+          `<wp:positionH relativeFrom="${posHFrom}"><wp:posOffset>${posHVal}</wp:posOffset></wp:positionH>` +
+          `<wp:positionV relativeFrom="${posVFrom}"><wp:posOffset>${posVVal}</wp:posOffset></wp:positionV>` +
+          `<wp:extent cx="${cx}" cy="${cy}"/>` +
+          `<wp:effectExtent l="0" t="0" r="0" b="0"/>` +
+          `<wp:wrapSquare wrapText="bothSides"/>` +
+          `<wp:docPr id="12" name="Student Photo"/>` +
+          `<wp:cNvGraphicFramePr/>` +
+          `<a:graphic>` +
+            `<a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">` +
+              `<wps:wsp>` +
+                `<wps:cNvSpPr><a:spLocks noChangeArrowheads="1"/></wps:cNvSpPr>` +
+                `<wps:spPr bwMode="auto">` +
+                  `<a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
+                  `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>` +
+                  `<a:blipFill>` +
+                    `<a:blip r:embed="${newRelId}"/>` +
+                    `<a:srcRect l="20000" t="0" r="20000" b="60000"/>` +
+                    `<a:stretch><a:fillRect/></a:stretch>` +
+                  `</a:blipFill>` +
+                  `<a:ln w="9525"><a:noFill/></a:ln>` +
+                `</wps:spPr>` +
+                `<wps:bodyPr rot="0" vert="horz" wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t" anchorCtr="0">` +
+                  `<a:noAutofit/>` +
+                `</wps:bodyPr>` +
+              `</wps:wsp>` +
+            `</a:graphicData>` +
+          `</a:graphic>` +
+          `<wp14:sizeRelH relativeFrom="margin"><wp14:pctWidth>0</wp14:pctWidth></wp14:sizeRelH>` +
+          `<wp14:sizeRelV relativeFrom="margin"><wp14:pctHeight>0</wp14:pctHeight></wp14:sizeRelV>` +
+        `</wp:anchor>` +
+        `</w:drawing></w:r>`;
 
-      // Build the new wps:wsp as a picture shape (not a text box)
-      // No inline xmlns — all namespaces already declared on <w:document>
-      const newWsp = `<wps:wsp><wps:cNvSpPr><a:spLocks noChangeArrowheads="1"/></wps:cNvSpPr><wps:spPr bwMode="auto"><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${blipFill}<a:ln w="9525"><a:noFill/></a:ln></wps:spPr><wps:bodyPr rot="0" vert="horz" wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t" anchorCtr="0"><a:noAutofit/></wps:bodyPr></wps:wsp>`;
-
-      // Rebuild graphicData/graphic keeping existing namespace attributes from the anchor
-      const newGraphicData = `<a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">${newWsp}</a:graphicData>`;
-      const newGraphic = `<a:graphic>${newGraphicData}</a:graphic>`;
-
-      // Replace only the graphic element inside the anchor, keep everything else
-      const newAnchorInner = anchorInner.replace(
-        /<a:graphic[\s\S]*?<\/a:graphic>/,
-        newGraphic
-      );
-
-      // Also update docPr name and cNvGraphicFramePr
-      const finalAnchorInner = newAnchorInner
-        .replace(/name="[^"]*"/, 'name="Student Photo"')
-        .replace(/<wp:cNvGraphicFramePr>[\s\S]*?<\/wp:cNvGraphicFramePr>/,
-          '<wp:cNvGraphicFramePr/>');
-
-      // Return just the drawing (no outer <w:r> wrapper needed for anchor)
-      return `<w:r><w:rPr><w:noProof/></w:rPr><w:drawing><wp:anchor${anchorAttrs ? anchorAttrs[1] : ''}>${finalAnchorInner}</wp:anchor></w:drawing></w:r>`;
+      return photoAnchor;
     }
   );
 
