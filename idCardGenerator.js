@@ -271,9 +271,6 @@ function convertDocxToPdf(docxBuffer, studentId) {
   const tmpPdf = path.join(tmpDir, `_tmp_${studentId}.pdf`);
   fs.writeFileSync(tmpDocx, docxBuffer);
 
-  const profileDir = path.join(tmpDir, `_lo_profile_${studentId}`);
-  if (!fs.existsSync(profileDir)) fs.mkdirSync(profileDir, { recursive: true });
-
   try {
     let cmd;
     if (process.platform === 'win32') {
@@ -283,7 +280,7 @@ function convertDocxToPdf(docxBuffer, studentId) {
       ];
       const loPath = loPaths.find(p => fs.existsSync(p));
       if (!loPath) return null;
-      cmd = `"${loPath}" --headless --norestore --nolockcheck --env:UserInstallation="file:///${profileDir.replace(/\\/g, '/')}" --convert-to pdf --outdir "${tmpDir}" "${tmpDocx}"`;
+      cmd = `"${loPath}" --headless --norestore --nolockcheck --convert-to pdf --outdir "${tmpDir}" "${tmpDocx}"`;
     } else {
       const loPaths = [
         '/usr/bin/libreoffice',
@@ -302,12 +299,11 @@ function convertDocxToPdf(docxBuffer, studentId) {
       }
       if (!loPath) return null;
       
-      // Use absolute paths
       const absDocxPath = path.resolve(tmpDocx);
       const absOutDir = path.resolve(tmpDir);
-      const absProfileDir = path.resolve(profileDir);
+      const profileDir = `/tmp/lo_profile_${studentId}`;
       
-      cmd = `"${loPath}" --headless --norestore --nolockcheck --convert-to pdf --outdir "${absOutDir}" --env:UserInstallation="file://${absProfileDir}" "${absDocxPath}"`;
+      cmd = `"${loPath}" --headless --norestore --nolockcheck --nologo --convert-to pdf --outdir "${absOutDir}" "${absDocxPath}"`;
     }
     
     console.log(`PDF conversion cmd: ${cmd}`);
@@ -315,23 +311,25 @@ function convertDocxToPdf(docxBuffer, studentId) {
     let stdout = '', stderr = '';
     try {
       const result = execSync(cmd, { 
-        timeout: 60000, 
+        timeout: 120000, 
         windowsHide: true, 
         stdio: 'pipe', 
         encoding: 'utf8',
         env: {
           ...process.env,
-          HOME: profileDir,
-          TMPDIR: profileDir
+          HOME: `/tmp/lo_profile_${studentId}`,
+          TMPDIR: `/tmp/lo_profile_${studentId}`,
+          USER: 'libreoffice'
         }
       });
       stdout = result || '';
     } catch(e) {
       stdout = (e.stdout || '').toString();
-      stderr = (e.stderr || e.message).toString();
+      stderr = (e.stderr || '').toString();
+      if (!stderr && e.message) stderr = e.message;
     }
-    console.log(`PDF conversion stdout: ${stdout.substring(0, 200)}`);
-    console.log(`PDF conversion stderr: ${stderr.substring(0, 200)}`);
+    console.log(`PDF conversion stdout: ${stdout.substring(0, 500)}`);
+    console.log(`PDF conversion stderr: ${stderr.substring(0, 500)}`);
     
     if (fs.existsSync(tmpPdf)) {
       const pdfBuffer = fs.readFileSync(tmpPdf);
@@ -339,7 +337,7 @@ function convertDocxToPdf(docxBuffer, studentId) {
       return pdfBuffer;
     } else {
       console.error('PDF not found after conversion');
-      // Try alternative output location
+      // Check alternative output locations
       const altPdfPath = path.join(tmpDir, `${path.basename(tmpDocx, '.docx')}.pdf`);
       if (fs.existsSync(altPdfPath)) {
         console.log(`Found PDF at alternative path: ${altPdfPath}`);
@@ -352,7 +350,6 @@ function convertDocxToPdf(docxBuffer, studentId) {
     console.error('PDF conversion failed:', e.message);
   } finally {
     try { fs.unlinkSync(tmpDocx); } catch (e) {}
-    try { fs.rmSync(profileDir, { recursive: true, force: true }); } catch (e) {}
   }
   return null;
 }

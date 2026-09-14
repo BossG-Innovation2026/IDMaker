@@ -104,7 +104,7 @@ function generateIDCardFile(student, photoBuf) {
   }
   
   try {
-    const { execSync } = require('child_process');
+    const { execSync, execSync: execSync2 } = require('child_process');
     let loPath = null;
     if (process.platform !== 'win32') {
       const paths = ['/usr/bin/libreoffice', '/usr/bin/soffice', '/usr/bin/libreoffice-writer'];
@@ -116,48 +116,81 @@ function generateIDCardFile(student, photoBuf) {
     
     if (loPath) {
       const pdfPath = path.join(uploadsDir, `${student.id}_ID.pdf`);
-      const userProfile = path.join(uploadsDir, `lo_profile_${student.id}`);
       console.log(`Converting DOCX to PDF: ${loPath}`);
-      console.log(`Input DOCX: ${docxPath} (exists: ${fs.existsSync(docxPath)})`);
+      console.log(`Input DOCX: ${docxPath} (exists: ${fs.existsSync(docxPath)}, size: ${fs.statSync(docxPath).size})`);
       console.log(`Output dir: ${uploadsDir} (exists: ${fs.existsSync(uploadsDir)})`);
       
-      try { fs.mkdirSync(userProfile, { recursive: true }); } catch(e) {}
+      // Verify LibreOffice can run at all
+      try {
+        const loVersion = execSync(`"${loPath}" --version`, { encoding: 'utf8', timeout: 10000, stdio: 'pipe' });
+        console.log(`LibreOffice version: ${loVersion.trim()}`);
+      } catch(e) {
+        console.error(`LibreOffice --version failed: ${e.message}`);
+      }
       
-      // Use absolute paths and ensure proper escaping
       const absDocxPath = path.resolve(docxPath);
       const absOutDir = path.resolve(uploadsDir);
-      const absProfileDir = path.resolve(userProfile);
       
-      // Build command with proper escaping for Linux
-      const cmd = `"${loPath}" --headless --norestore --nolockcheck --convert-to pdf --outdir "${absOutDir}" --env:UserInstallation="file://${absProfileDir}" "${absDocxPath}"`;
+      // Use a simple profile dir in /tmp (not in uploads where it could conflict)
+      const profileDir = `/tmp/lo_profile_${student.id}`;
+      try { fs.mkdirSync(profileDir, { recursive: true }); } catch(e) {}
+      
+      // Key flags: --headless, --nologo (skip splash), --convert-to pdf:writer_pdf_Export (explicit filter)
+      // Removed --env:UserInstallation as it can cause issues. Using HOME env instead.
+      const cmd = `"${loPath}" --headless --norestore --nolockcheck --nologo --convert-to pdf --outdir "${absOutDir}" "${absDocxPath}"`;
       console.log(`LibreOffice cmd: ${cmd}`);
       
       let stdout = '', stderr = '';
       try {
         const result = execSync(cmd, { 
-          timeout: 60000, 
+          timeout: 120000, 
           windowsHide: true, 
           stdio: 'pipe', 
           encoding: 'utf8',
           env: {
             ...process.env,
-            HOME: absProfileDir,
-            TMPDIR: absProfileDir
+            HOME: profileDir,
+            TMPDIR: profileDir,
+            USER: 'libreoffice'
           }
         });
         stdout = result || '';
       } catch(e) {
         stdout = (e.stdout || '').toString();
-        stderr = (e.stderr || e.message).toString();
+        stderr = (e.stderr || '').toString();
+        if (!stderr && e.message) stderr = e.message;
       }
       console.log(`LibreOffice stdout: ${stdout.substring(0, 500)}`);
       console.log(`LibreOffice stderr: ${stderr.substring(0, 500)}`);
       
-      // List files in uploads dir after conversion
+      // Cleanup profile
+      try { fs.rmSync(profileDir, { recursive: true, force: true }); } catch(e) {}
+      
+      // List all files in uploads dir with student.id
       try {
         const files = fs.readdirSync(uploadsDir).filter(f => f.includes(student.id));
         console.log(`Uploads dir files for ${student.id}: ${files.join(', ')}`);
       } catch(e) {}
+      
+      // Also check if PDF ended up in current working directory or /tmp
+      const altLocations = [
+        path.join(process.cwd(), `${path.basename(absDocxPath, '.docx')}.pdf`),
+        `/tmp/${path.basename(absDocxPath, '.docx')}.pdf`,
+        pdfPath
+      ];
+      
+      for (const altPdf of altLocations) {
+        if (fs.existsSync(altPdf) && altPdf !== pdfPath) {
+          console.log(`Found PDF at alternative location: ${altPdf}`);
+          try {
+            fs.copyFileSync(altPdf, pdfPath);
+            fs.unlinkSync(altPdf);
+            console.log(`Copied PDF to: ${pdfPath}`);
+          } catch(e) {
+            console.error(`Failed to copy PDF: ${e.message}`);
+          }
+        }
+      }
       
       if (fs.existsSync(pdfPath)) {
         const pdfSize = fs.statSync(pdfPath).size;
