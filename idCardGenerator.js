@@ -290,7 +290,9 @@ function convertDocxToPdf(docxBuffer, studentId) {
       const absOutDir = path.resolve(tmpDir);
       const profileDir = `/tmp/lo_profile_${studentId}`;
       
-      cmd = `"${loPath}" --headless --norestore --nolockcheck --nologo --convert-to pdf --outdir "${absOutDir}" "${absDocxPath}"`;
+      const profileDir2 = `/tmp/lo_profile_${studentId}`;
+      try { require('fs').mkdirSync(profileDir2, { recursive: true }); } catch(e) {}
+      cmd = `"${loPath}" --headless --norestore --nolockcheck --nologo --env:UserInstallation="file://${profileDir2}" --convert-to pdf:writer_pdf_Export --outdir "${absOutDir}" "${absDocxPath}"`;
     }
     
     console.log(`PDF conversion cmd: ${cmd}`);
@@ -306,7 +308,8 @@ function convertDocxToPdf(docxBuffer, studentId) {
           ...process.env,
           HOME: `/tmp/lo_profile_${studentId}`,
           TMPDIR: `/tmp/lo_profile_${studentId}`,
-          USER: 'libreoffice'
+          SAL_USE_VCLPLUGIN: 'svp',
+          DISPLAY: ''
         }
       });
       stdout = result || '';

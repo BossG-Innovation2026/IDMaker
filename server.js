@@ -131,13 +131,14 @@ function generateIDCardFile(student, photoBuf) {
       const absDocxPath = path.resolve(docxPath);
       const absOutDir = path.resolve(uploadsDir);
       
-      // Use a simple profile dir in /tmp (not in uploads where it could conflict)
+      // Profile dir in /tmp — must exist and be writable before LibreOffice starts
       const profileDir = `/tmp/lo_profile_${student.id}`;
       try { fs.mkdirSync(profileDir, { recursive: true }); } catch(e) {}
       
-      // Key flags: --headless, --nologo (skip splash), --convert-to pdf:writer_pdf_Export (explicit filter)
-      // Removed --env:UserInstallation as it can cause issues. Using HOME env instead.
-      const cmd = `"${loPath}" --headless --norestore --nolockcheck --nologo --convert-to pdf --outdir "${absOutDir}" "${absDocxPath}"`;
+      // --env:UserInstallation with file:/// (3 slashes) is required on Linux Docker.
+      // Without it LibreOffice silently crashes trying to write its lock files as root.
+      // Use explicit writer_pdf_Export filter to avoid ambiguity.
+      const cmd = `"${loPath}" --headless --norestore --nolockcheck --nologo --env:UserInstallation="file://${profileDir}" --convert-to pdf:writer_pdf_Export --outdir "${absOutDir}" "${absDocxPath}"`;
       console.log(`LibreOffice cmd: ${cmd}`);
       
       let stdout = '', stderr = '';
@@ -151,7 +152,8 @@ function generateIDCardFile(student, photoBuf) {
             ...process.env,
             HOME: profileDir,
             TMPDIR: profileDir,
-            USER: 'libreoffice'
+            SAL_USE_VCLPLUGIN: 'svp',
+            DISPLAY: ''
           }
         });
         stdout = result || '';
