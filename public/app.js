@@ -652,7 +652,7 @@ function cropToSquare(source, faceBox) {
         const faceCX = faceBox.x + faceBox.width / 2;
         const faceCY = faceBox.y + faceBox.height / 2;
         const faceDim = Math.max(faceBox.width, faceBox.height);
-        cropSize = faceDim / 0.7;
+        cropSize = faceDim / 0.9;
         cx = faceCX;
         cy = faceCY;
     } else {
