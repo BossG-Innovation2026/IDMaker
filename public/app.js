@@ -365,23 +365,42 @@ function startFaceDetection() {
         );
         
         const box = detection.detection.box;
+        const landmarks = detection.landmarks;
         const videoWidth = video.videoWidth;
         
+        // Check if face is centered
         const faceCenterX = box.x + box.width / 2;
         const isCentered = Math.abs(faceCenterX - videoWidth / 2) < videoWidth * 0.15;
+        
+        // Check if face size is appropriate
         const isGoodSize = box.width > videoWidth * 0.15 && box.width < videoWidth * 0.6;
+        
+        // Check face rotation/tilt using landmarks
+        const leftEye = landmarks.getLeftEye();
+        const rightEye = landmarks.getRightEye();
+        const leftEyeCenter = leftEye.reduce((sum, p) => ({ x: sum.x + p.x, y: sum.y + p.y }), { x: 0, y: 0 });
+        leftEyeCenter.x /= leftEye.length;
+        leftEyeCenter.y /= leftEye.length;
+        const rightEyeCenter = rightEye.reduce((sum, p) => ({ x: sum.x + p.x, y: sum.y + p.y }), { x: 0, y: 0 });
+        rightEyeCenter.x /= rightEye.length;
+        rightEyeCenter.y /= rightEye.length;
+        
+        // Calculate angle between eyes (should be close to horizontal)
+        const eyeAngle = Math.atan2(rightEyeCenter.y - leftEyeCenter.y, rightEyeCenter.x - leftEyeCenter.x);
+        const eyeAngleDegrees = Math.abs(eyeAngle * 180 / Math.PI);
+        const isStraight = eyeAngleDegrees < 8; // Max 8 degrees tilt allowed
         
         const brightness = await checkBrightness(video, box);
         const isGoodBrightness = brightness > 40 && brightness < 220;
         
+        // STRICTER white background check
         const bgWhiteness = await checkBackgroundWhiteness(video, box);
-        const isWhiteBg = bgWhiteness > 170;
+        const isWhiteBg = bgWhiteness > 200; // Increased from 170 to 200 (much stricter)
         
-        ctx.strokeStyle = isCentered && isGoodSize && isWhiteBg ? '#48bb78' : '#dd6b20';
+        ctx.strokeStyle = isCentered && isGoodSize && isWhiteBg && isStraight ? '#48bb78' : '#dd6b20';
         ctx.lineWidth = 3;
         ctx.strokeRect(box.x, box.y, box.width, box.height);
         
-        const landmarks = detection.landmarks;
         ctx.fillStyle = '#667eea';
         landmarks.positions.forEach(pos => {
             ctx.beginPath();
@@ -389,10 +408,10 @@ function startFaceDetection() {
             ctx.fill();
         });
         
-        const allPassed = isCentered && isGoodSize && isGoodBrightness && isWhiteBg;
+        const allPassed = isCentered && isGoodSize && isGoodBrightness && isWhiteBg && isStraight;
         allChecksPassed = allPassed;
         updateCaptureButton();
-        updateFaceChecks(true, isCentered, isGoodSize, isGoodBrightness, isWhiteBg);
+        updateFaceChecks(true, isCentered, isGoodSize, isGoodBrightness, isWhiteBg, isStraight);
         
         const guideOval = document.getElementById('guideOval');
         guideOval.className = 'guide-oval';
@@ -401,12 +420,18 @@ function startFaceDetection() {
             updateFaceStatus('Perfect! Ready to capture', 'success');
         } else if (!isWhiteBg) {
             guideOval.classList.add('warning');
-            updateFaceStatus('Background too dark - use white background', 'warning');
-        } else if (isCentered && isGoodSize) {
+            updateFaceStatus('Use a plain white background', 'warning');
+        } else if (!isStraight) {
             guideOval.classList.add('warning');
-            updateFaceStatus('Good - tap Capture when ready', 'warning');
+            updateFaceStatus('Face forward — do not tilt your head', 'warning');
+        } else if (!isCentered) {
+            guideOval.classList.add('warning');
+            updateFaceStatus('Move face to center of frame', 'warning');
+        } else if (!isGoodSize) {
+            guideOval.classList.add('warning');
+            updateFaceStatus('Move closer or further from camera', 'warning');
         } else {
-            updateFaceStatus('Position your face in the oval', 'warning');
+            updateFaceStatus('Almost there...', 'warning');
         }
     }, 200);
 }
@@ -466,17 +491,16 @@ async function checkBackgroundWhiteness(video, faceBox) {
     return bgCount > 0 ? bgSum / bgCount : 128;
 }
 
-function updateFaceChecks(faceDetected, centered, goodSize, goodLighting, whiteBg) {
+function updateFaceChecks(faceDetected, centered, goodSize, goodLighting, whiteBg, straight) {
     const checks = {
-        checkFace: faceDetected,
+        checkFace:   faceDetected,
         checkCenter: centered,
-        checkSize: goodSize,
-        checkBg: whiteBg
+        checkSize:   goodSize,
+        checkBg:     whiteBg
     };
-    
     Object.entries(checks).forEach(([id, passed]) => {
         const el = document.getElementById(id);
-        el.className = `check-item ${passed ? 'passed' : ''}`;
+        if (el) el.className = `check-item ${passed ? 'passed' : ''}`;
     });
 }
 
@@ -513,14 +537,12 @@ function capturePhoto() {
         return;
     }
     
-    // Wait for video to be ready
     if (!video.videoWidth || !video.videoHeight) {
         console.log('Video not ready yet, retrying...');
         video.onloadedmetadata = () => capturePhoto();
         return;
     }
     
-    // Use ImageCapture API if available (more reliable on mobile)
     if (window.ImageCapture) {
         const track = video.srcObject.getVideoTracks()[0];
         const imageCapture = new ImageCapture(track);
@@ -529,33 +551,11 @@ function capturePhoto() {
                 const reader = new FileReader();
                 reader.onloadend = () => {
                     capturedPhotoData = reader.result;
-                    if (modelsLoaded) {
-                        faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
-                            .then(detections => {
-                                if (detections.length > 0) {
-                                    const detection = detections.reduce((prev, current) => 
-                                        (prev.detection.box.area > current.detection.box.area) ? prev : current
-                                    );
-                                    const img = new Image();
-                                    img.onload = () => {
-                                        capturedPhotoData = cropToFace(img, detection.detection.box);
-                                        closeCameraModal();
-                                        showPreviewModal();
-                                    };
-                                    img.src = capturedPhotoData;
-                                } else {
-                                    closeCameraModal();
-                                    showPreviewModal();
-                                }
-                            })
-                            .catch(() => {
-                                closeCameraModal();
-                                showPreviewModal();
-                            });
-                    } else {
-                        closeCameraModal();
-                        showPreviewModal();
-                    }
+                    const img = new Image();
+                    img.onload = () => {
+                        detectAndCrop(img);
+                    };
+                    img.src = capturedPhotoData;
                 };
                 reader.readAsDataURL(blob);
             })
@@ -587,28 +587,27 @@ function captureWithCanvas(video) {
         return;
     }
     
-    capturedPhotoData = canvas.toDataURL('image/jpeg', 0.9);
-    
+    capturedPhotoData = canvas.toDataURL('image/jpeg', 0.92);
+    detectAndCrop(canvas);
+}
+
+async function detectAndCrop(source) {
     if (modelsLoaded) {
-        faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
-            .then(detections => {
-                if (detections.length > 0) {
-                    const detection = detections.reduce((prev, current) => 
-                        (prev.detection.box.area > current.detection.box.area) ? prev : current
-                    );
-                    capturedPhotoData = cropToFace(canvas, detection.detection.box);
-                }
-                closeCameraModal();
-                showPreviewModal();
-            })
-            .catch(() => {
-                closeCameraModal();
-                showPreviewModal();
-            });
-    } else {
-        closeCameraModal();
-        showPreviewModal();
+        try {
+            const detections = await faceapi
+                .detectAllFaces(source, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }));
+            if (detections.length > 0) {
+                const detection = detections.reduce((prev, current) =>
+                    (prev.detection.box.area > current.detection.box.area) ? prev : current
+                );
+                capturedPhotoData = cropToFace(source, detection.detection.box);
+            }
+        } catch (err) {
+            console.warn('Face detection on captured image failed:', err);
+        }
     }
+    closeCameraModal();
+    showPreviewModal();
 }
 
 function cropToFace(sourceCanvas, faceBox) {
@@ -693,6 +692,7 @@ function showPhotoValidation(message, type) {
 
 // Form Submit
 let currentStudentData = null;
+let pendingDuplicateOverride = false;
 
 async function handleSubmit(e) {
     e.preventDefault();
@@ -702,9 +702,46 @@ async function handleSubmit(e) {
         return;
     }
     
+    openConfirmModal();
+}
+
+function openConfirmModal() {
+    const photoSrc = capturedPhotoData || (selectedFile ? URL.createObjectURL(selectedFile) : '');
+    document.getElementById('confirmPhoto').src = photoSrc;
+
     const firstName = document.getElementById('firstName').value.trim();
-    const lastName = document.getElementById('lastName').value.trim();
-    const section = document.getElementById('classSelect').value;
+    const middleName = document.getElementById('middleName').value.trim();
+    const lastName  = document.getElementById('lastName').value.trim();
+    const mi       = document.getElementById('mi') ? document.getElementById('mi').value.trim() : '';
+    const fullName  = [firstName, middleName, lastName].filter(Boolean).join(' ');
+
+    document.getElementById('confirmName').textContent     = fullName;
+    document.getElementById('confirmSection').textContent   = document.getElementById('classSelect').value;
+    document.getElementById('confirmLRN').textContent       = document.getElementById('lrn').value || '—';
+    document.getElementById('confirmBirthday').textContent  = document.getElementById('birthday').value || '—';
+    document.getElementById('confirmSex').textContent       = document.getElementById('sex').value || '—';
+
+    const town = document.getElementById('town').value || '';
+    const brgy = document.getElementById('barangay').value || '';
+    const loc  = document.getElementById('specificLocation').value || '';
+    document.getElementById('confirmAddress').textContent = [loc, brgy, town].filter(Boolean).join(', ') || '—';
+
+    document.getElementById('confirmParent').textContent  = document.getElementById('parentName').value || '—';
+    document.getElementById('confirmContact').textContent = document.getElementById('contactNumber').value || '—';
+
+    document.getElementById('confirmModal').classList.remove('hidden');
+}
+
+function closeConfirmModal() {
+    document.getElementById('confirmModal').classList.add('hidden');
+}
+
+async function confirmAndGenerate() {
+    closeConfirmModal();
+    
+    const firstName = document.getElementById('firstName').value.trim();
+    const lastName  = document.getElementById('lastName').value.trim();
+    const section   = document.getElementById('classSelect').value;
     
     showLoading('Checking for duplicates...');
     

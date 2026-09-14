@@ -833,6 +833,87 @@ body {
                 -3px -3px 6px var(--shadow-light);
 }
 
+/* Confirmation Review Modal */
+.confirm-content {
+    max-width: 420px;
+}
+
+.confirm-body {
+    padding: 16px 20px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.confirm-photo {
+    width: 120px;
+    height: 120px;
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 0 auto 16px;
+    background: var(--bg-color);
+    box-shadow: inset 3px 3px 6px var(--shadow-dark),
+                inset -3px -3px 6px var(--shadow-light);
+}
+
+.confirm-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.confirm-details h3 {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+}
+
+.confirm-details .detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+    font-size: 0.9rem;
+}
+
+.confirm-details .detail-row strong {
+    color: var(--text);
+    flex-shrink: 0;
+    margin-right: 10px;
+}
+
+.confirm-details .detail-row span {
+    color: var(--text-light);
+    text-align: right;
+    word-break: break-word;
+}
+
+.confirm-actions {
+    display: flex;
+    gap: 10px;
+    padding: 10px 20px 20px;
+}
+
+.confirm-actions .btn-secondary {
+    flex: 1;
+    color: var(--text-light);
+}
+
+.confirm-actions .btn-primary {
+    flex: 1.5;
+    background: var(--bg-color);
+    color: var(--primary);
+    font-weight: 600;
+    box-shadow: 5px 5px 10px var(--shadow-dark),
+                -5px -5px 10px var(--shadow-light);
+}
+
+.confirm-actions .btn-primary:hover {
+    box-shadow: 3px 3px 6px var(--shadow-dark),
+                -3px -3px 6px var(--shadow-light);
+}
+
 /* Utility */
 .hidden {
     display: none;

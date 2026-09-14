@@ -23,9 +23,10 @@
                     <button type="button" class="btn-neu btn-secondary" onclick="openCameraModal()">
                         📷 Take Photo
                     </button>
-                    <button type="button" class="btn-neu btn-secondary" onclick="document.getElementById('cameraInput').click()">
+                    <!-- Upload button DISABLED - camera only -->
+                    <!-- <button type="button" class="btn-neu btn-secondary" onclick="document.getElementById('cameraInput').click()">
                         📂 Upload from Gallery
-                    </button>
+                    </button> -->
                     <div id="photoValidation" class="photo-validation hidden"></div>
                 </div>
 
@@ -246,8 +247,66 @@
         </div>
     </div>
 
-    <!-- Hidden file input for fallback -->
-    <input type="file" id="cameraInput" name="photo" accept="image/*" capture="user" hidden>
+    <!-- Confirmation Preview Modal (Review before Generate) -->
+    <div id="confirmModal" class="modal hidden">
+        <div class="modal-content confirm-content">
+            <div class="modal-header">
+                <h2>✓ Review Student Details</h2>
+                <button type="button" class="close-btn" onclick="closeConfirmModal()">✕</button>
+            </div>
+            <div class="confirm-body">
+                <div class="confirm-photo">
+                    <img id="confirmPhoto" src="" alt="Student Photo">
+                </div>
+                <div class="confirm-details">
+                    <h3>Personal Information</h3>
+                    <div class="detail-row">
+                        <strong>Name:</strong>
+                        <span id="confirmName"></span>
+                    </div>
+                    <div class="detail-row">
+                        <strong>Section:</strong>
+                        <span id="confirmSection"></span>
+                    </div>
+                    <div class="detail-row">
+                        <strong>LRN:</strong>
+                        <span id="confirmLRN"></span>
+                    </div>
+                    <div class="detail-row">
+                        <strong>Birthday:</strong>
+                        <span id="confirmBirthday"></span>
+                    </div>
+                    <div class="detail-row">
+                        <strong>Sex:</strong>
+                        <span id="confirmSex"></span>
+                    </div>
+                    <div class="detail-row">
+                        <strong>Address:</strong>
+                        <span id="confirmAddress"></span>
+                    </div>
+                    <div class="detail-row">
+                        <strong>Parent/Guardian:</strong>
+                        <span id="confirmParent"></span>
+                    </div>
+                    <div class="detail-row">
+                        <strong>Contact:</strong>
+                        <span id="confirmContact"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="confirm-actions">
+                <button type="button" class="btn-neu btn-secondary" onclick="closeConfirmModal()">
+                    ← Edit Details
+                </button>
+                <button type="button" class="btn-neu btn-primary" onclick="confirmAndGenerate()">
+                    ✓ Generate ID Card
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden file input for fallback (DISABLED) -->
+    <input type="file" id="cameraInput" name="photo" accept="image/*" capture="user" hidden disabled style="display:none;">
 
     <!-- face-api.js (vladmandic fork) for face detection -->
     <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
