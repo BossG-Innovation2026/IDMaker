@@ -119,12 +119,23 @@ function generateIDCardFile(student, photoBuf) {
       const userProfile = path.join(uploadsDir, `lo_profile_${student.id}`);
       console.log(`Converting DOCX to PDF: ${loPath}`);
       try { fs.mkdirSync(userProfile, { recursive: true }); } catch(e) {}
-      const cmd = `"${loPath}" --headless --norestore --convert-to pdf --outdir "${uploadsDir}" --env:UserInstallation="file://${userProfile}" "${docxPath}"`;
-      let stderr = '';
+      const cmd = `"${loPath}" --headless --norestore --nolockcheck --convert-to pdf --outdir "${uploadsDir}" --env:UserInstallation="file://${userProfile}" "${docxPath}"`;
+      console.log(`LibreOffice cmd: ${cmd}`);
+      let stdout = '', stderr = '';
       try {
-        stderr = execSync(cmd, { timeout: 60000, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }).toString();
-      } catch(e) { stderr = (e.stderr || e.message).toString(); }
+        const result = execSync(cmd, { timeout: 60000, windowsHide: true, stdio: 'pipe', encoding: 'utf8' });
+        stdout = result || '';
+      } catch(e) {
+        stdout = (e.stdout || '').toString();
+        stderr = (e.stderr || e.message).toString();
+      }
+      console.log(`LibreOffice stdout: ${stdout.substring(0, 500)}`);
       console.log(`LibreOffice stderr: ${stderr.substring(0, 500)}`);
+      // List files in uploads dir after conversion
+      try {
+        const files = fs.readdirSync(uploadsDir).filter(f => f.includes(student.id));
+        console.log(`Uploads dir files for ${student.id}: ${files.join(', ')}`);
+      } catch(e) {}
       if (fs.existsSync(pdfPath)) {
         const pdfSize = fs.statSync(pdfPath).size;
         console.log(`PDF saved: ${pdfPath} (${pdfSize} bytes)`);
