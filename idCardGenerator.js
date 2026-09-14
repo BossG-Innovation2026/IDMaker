@@ -25,34 +25,19 @@ function escapeXml(str) {
 }
 
 /**
- * Build a photo drawing that fits inside the text box frame.
- * srcRect crops the photo to the top-center region to zoom into the face.
- * The frame is very wide (4:1 ratio), so we crop the photo vertically to show
- * only the upper portion (face area) and horizontally center it.
- *
- * srcRect values are in 1/1000ths of a percent (100000 = 100%).
- * l/r crop sides horizontally, t/b crop top/bottom.
- * For a portrait photo (3:4), to fill a 4:1 frame we need to show ~20% of
- * the photo height. We take the top 20% centered horizontally.
- */
-function buildPhotoDrawing(rId, cx, cy) {
-  // Crop: show top 25% of photo height (face region), centered horizontally.
-  // For a typical portrait photo this puts the face in frame.
-  // l=25000 r=25000 = crop 25% from each side (keep center 50% width)
-  // t=0 b=75000 = crop bottom 75% (keep top 25% height)
-  const srcRect = `l="20000" t="0" r="20000" b="60000"`;
-  return `<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="100" name="Student Photo"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="0"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><pic:nvPicPr><pic:cNvPr id="100" name="Student Photo"/><pic:cNvPicPr><a:picLocks noChangeAspect="0"/></pic:cNvPicPr></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rId}"/><a:srcRect ${srcRect}/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>`;
-}
-
-/**
  * Insert the student photo into the DOCX template, replacing the {{picture}} placeholder.
  *
  * Strategy:
- * 1. Find mc:AlternateContent blocks containing the actual {{picture}} placeholder
- *    (check for 'picture}}' not just 'picture' to avoid false positives from XML namespaces).
- * 2. Keep the mc:Choice section intact (preserves wp:anchor frame position/size/wrapping).
- * 3. Inside wps:txbxContent, replace the {{picture}} runs with the photo drawing.
- * 4. Photo is sized to the effective area (box minus padding) and cropped to face region.
+ * The {{picture}} placeholder lives inside a <wps:wsp> text box anchored via <wp:anchor>.
+ * Rather than trying to insert a <wp:inline> drawing inside the text box (which LibreOffice
+ * ignores), we convert the wps:wsp shape itself into a picture frame:
+ *   1. Remove txBox="1" from wps:cNvSpPr  → shape is no longer a text box
+ *   2. Replace <a:noFill/> with <a:blipFill> pointing to the photo
+ *   3. Remove <wps:txbx>...</wps:txbx>  → no text content
+ *   4. Replace <wps:bodyPr> with minimal body props
+ *   5. Keep the entire <wp:anchor> positioning intact
+ *
+ * srcRect crops to the face region: center 60% width, top 40% height.
  */
 function insertPhoto(zip, documentXml, photoBuffer) {
   const relsFileName = 'word/_rels/document.xml.rels';
@@ -83,85 +68,57 @@ function insertPhoto(zip, documentXml, photoBuffer) {
 
   let result = documentXml;
 
-  // STEP 1: Find <w:r> elements that wrap mc:AlternateContent blocks containing {{picture}}.
-  // Template structure: <w:r><w:rPr>...</w:rPr><mc:AlternateContent>...</mc:AlternateContent></w:r>
-  // We must match the entire outer <w:r> to avoid leaving a dangling </w:r>.
+  // Match the outer <w:r> that wraps the picture mc:AlternateContent block
   result = result.replace(
     /<w:r\b[^>]*>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?<mc:AlternateContent>([\s\S]*?)<\/mc:AlternateContent><\/w:r>/g,
     (fullMatch, mcContent) => {
       const block = `<mc:AlternateContent>${mcContent}</mc:AlternateContent>`;
-
       if (!block.includes('picture}}') && !block.includes('{{picture')) {
-        return fullMatch; // not a picture block — leave untouched
+        return fullMatch;
       }
 
-      // Extract mc:Choice (wp:anchor + wps:wsp frame)
-      const choiceMatch = block.match(/<mc:Choice[^>]*>([\s\S]*?)<\/mc:Choice>/);
-      if (!choiceMatch) return fullMatch;
+      // Extract the wp:anchor element (the full positioned frame)
+      const anchorMatch = block.match(/<wp:anchor([\s\S]*?)<\/wp:anchor>/);
+      if (!anchorMatch) return fullMatch;
 
-      let choiceContent = choiceMatch[1];
+      const anchorAttrs = anchorMatch[0].match(/<wp:anchor([^>]*)>/);
+      const anchorInner = anchorMatch[1];
 
-      // Read frame dimensions from wp:extent
-      const extentMatch = choiceContent.match(/<wp:extent[^>]*cx="(\d+)"[^>]*cy="(\d+)"/);
-      let boxCx = 1193800, boxCy = 295275;
-      if (extentMatch) { boxCx = parseInt(extentMatch[1]); boxCy = parseInt(extentMatch[2]); }
+      // Extract extent (frame size)
+      const extentMatch = anchorInner.match(/<wp:extent[^/]* cx="(\d+)"[^/]* cy="(\d+)"\/>/);
+      const cx = extentMatch ? parseInt(extentMatch[1]) : 1193800;
+      const cy = extentMatch ? parseInt(extentMatch[2]) : 295275;
 
-      // Read padding from wps:bodyPr
-      const bodyPrMatch = choiceContent.match(/wps:bodyPr[^>]*lIns="(\d+)"[^>]*tIns="(\d+)"[^>]*rIns="(\d+)"[^>]*bIns="(\d+)"/);
-      let lIns = 0, tIns = 0, rIns = 0, bIns = 0;
-      if (bodyPrMatch) {
-        lIns = parseInt(bodyPrMatch[1]); tIns = parseInt(bodyPrMatch[2]);
-        rIns = parseInt(bodyPrMatch[3]); bIns = parseInt(bodyPrMatch[4]);
-      }
+      // Build the blipFill with face crop:
+      // srcRect: crop 20% from each side horizontally, keep top 40% vertically
+      // Values in 1/1000ths of a percent (100000 = 100%)
+      const blipFill = `<a:blipFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:blip r:embed="${newRelId}"/><a:srcRect l="20000" t="0" r="20000" b="60000"/><a:stretch><a:fillRect/></a:stretch></a:blipFill>`;
 
-      const drawCx = boxCx - lIns - rIns;
-      const drawCy = boxCy - tIns - bIns;
-      const photoDrawing = buildPhotoDrawing(newRelId, drawCx, drawCy);
+      // Build the new wps:wsp as a picture shape (not a text box)
+      const newWsp = `<wps:wsp xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:cNvSpPr><a:spLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeArrowheads="1"/></wps:cNvSpPr><wps:spPr bwMode="auto" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${blipFill}<a:ln w="9525"><a:noFill/></a:ln></wps:spPr><wps:bodyPr rot="0" vert="horz" wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t" anchorCtr="0"><a:noAutofit xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/></wps:bodyPr></wps:wsp>`;
 
-      // Replace wps:txbxContent with photo drawing
-      choiceContent = choiceContent.replace(
-        /<wps:txbxContent>[\s\S]*?<\/wps:txbxContent>/,
-        `<wps:txbxContent><w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="0"/></w:pPr><w:r>${photoDrawing}</w:r></w:p></wps:txbxContent>`
+      // Rebuild the anchor keeping all positioning but swapping the graphicData content
+      const newGraphicData = `<a:graphicData xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">${newWsp}</a:graphicData>`;
+      const newGraphic = `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">${newGraphicData}</a:graphic>`;
+
+      // Replace only the graphic element inside the anchor, keep everything else
+      const newAnchorInner = anchorInner.replace(
+        /<a:graphic[\s\S]*?<\/a:graphic>/,
+        newGraphic
       );
 
-      // Return just the mc:AlternateContent (no outer <w:r> — the original had one but it only
-      // served as a container; the anchor drawing stands on its own in the paragraph)
-      return `<mc:AlternateContent><mc:Choice Requires="wps">${choiceContent}</mc:Choice></mc:AlternateContent>`;
+      // Also update docPr name and cNvGraphicFramePr
+      const finalAnchorInner = newAnchorInner
+        .replace(/name="[^"]*"/, 'name="Student Photo"')
+        .replace(/<wp:cNvGraphicFramePr>[\s\S]*?<\/wp:cNvGraphicFramePr>/,
+          '<wp:cNvGraphicFramePr/>');
+
+      // Return just the drawing (no outer <w:r> wrapper needed for anchor)
+      return `<w:r><w:rPr><w:noProof/></w:rPr><w:drawing><wp:anchor${anchorAttrs ? anchorAttrs[1] : ''}>${finalAnchorInner}</wp:anchor></w:drawing></w:r>`;
     }
   );
 
-  // Also handle mc:AlternateContent NOT wrapped in <w:r> (belt-and-suspenders)
-  result = result.replace(
-    /(?<!<\/w:rPr>)<mc:AlternateContent>([\s\S]*?)<\/mc:AlternateContent>/g,
-    (match, mcContent) => {
-      if (!match.includes('picture}}') && !match.includes('{{picture')) return match;
-
-      const choiceMatch = match.match(/<mc:Choice[^>]*>([\s\S]*?)<\/mc:Choice>/);
-      if (!choiceMatch) return match;
-      let choiceContent = choiceMatch[1];
-
-      const extentMatch = choiceContent.match(/<wp:extent[^>]*cx="(\d+)"[^>]*cy="(\d+)"/);
-      let boxCx = 1193800, boxCy = 295275;
-      if (extentMatch) { boxCx = parseInt(extentMatch[1]); boxCy = parseInt(extentMatch[2]); }
-
-      const bodyPrMatch = choiceContent.match(/wps:bodyPr[^>]*lIns="(\d+)"[^>]*tIns="(\d+)"[^>]*rIns="(\d+)"[^>]*bIns="(\d+)"/);
-      let lIns = 0, tIns = 0, rIns = 0, bIns = 0;
-      if (bodyPrMatch) { lIns = parseInt(bodyPrMatch[1]); tIns = parseInt(bodyPrMatch[2]); rIns = parseInt(bodyPrMatch[3]); bIns = parseInt(bodyPrMatch[4]); }
-
-      const drawCx = boxCx - lIns - rIns;
-      const drawCy = boxCy - tIns - bIns;
-      const photoDrawing = buildPhotoDrawing(newRelId, drawCx, drawCy);
-
-      choiceContent = choiceContent.replace(
-        /<wps:txbxContent>[\s\S]*?<\/wps:txbxContent>/,
-        `<wps:txbxContent><w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="0"/></w:pPr><w:r>${photoDrawing}</w:r></w:p></wps:txbxContent>`
-      );
-
-      return `<mc:AlternateContent><mc:Choice Requires="wps">${choiceContent}</mc:Choice></mc:AlternateContent>`;
-    }
-  );
-
-  // STEP 2: Remove any remaining standalone {{picture}} runs outside mc blocks
+  // STEP 2: Remove any remaining standalone {{picture}} runs
   result = result.replace(
     /<w:r\b[^>]*>[\s\S]*?<\/w:r>/g,
     (match) => {
