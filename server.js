@@ -118,12 +118,33 @@ function generateIDCardFile(student, photoBuf) {
       const pdfPath = path.join(uploadsDir, `${student.id}_ID.pdf`);
       const userProfile = path.join(uploadsDir, `lo_profile_${student.id}`);
       console.log(`Converting DOCX to PDF: ${loPath}`);
+      console.log(`Input DOCX: ${docxPath} (exists: ${fs.existsSync(docxPath)})`);
+      console.log(`Output dir: ${uploadsDir} (exists: ${fs.existsSync(uploadsDir)})`);
+      
       try { fs.mkdirSync(userProfile, { recursive: true }); } catch(e) {}
-      const cmd = `"${loPath}" --headless --norestore --nolockcheck --convert-to pdf --outdir "${uploadsDir}" --env:UserInstallation="file://${userProfile}" "${docxPath}"`;
+      
+      // Use absolute paths and ensure proper escaping
+      const absDocxPath = path.resolve(docxPath);
+      const absOutDir = path.resolve(uploadsDir);
+      const absProfileDir = path.resolve(userProfile);
+      
+      // Build command with proper escaping for Linux
+      const cmd = `"${loPath}" --headless --norestore --nolockcheck --convert-to pdf --outdir "${absOutDir}" --env:UserInstallation="file://${absProfileDir}" "${absDocxPath}"`;
       console.log(`LibreOffice cmd: ${cmd}`);
+      
       let stdout = '', stderr = '';
       try {
-        const result = execSync(cmd, { timeout: 60000, windowsHide: true, stdio: 'pipe', encoding: 'utf8' });
+        const result = execSync(cmd, { 
+          timeout: 60000, 
+          windowsHide: true, 
+          stdio: 'pipe', 
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            HOME: absProfileDir,
+            TMPDIR: absProfileDir
+          }
+        });
         stdout = result || '';
       } catch(e) {
         stdout = (e.stdout || '').toString();
@@ -131,17 +152,28 @@ function generateIDCardFile(student, photoBuf) {
       }
       console.log(`LibreOffice stdout: ${stdout.substring(0, 500)}`);
       console.log(`LibreOffice stderr: ${stderr.substring(0, 500)}`);
+      
       // List files in uploads dir after conversion
       try {
         const files = fs.readdirSync(uploadsDir).filter(f => f.includes(student.id));
         console.log(`Uploads dir files for ${student.id}: ${files.join(', ')}`);
       } catch(e) {}
+      
       if (fs.existsSync(pdfPath)) {
         const pdfSize = fs.statSync(pdfPath).size;
         console.log(`PDF saved: ${pdfPath} (${pdfSize} bytes)`);
         return { pdfPath, docxPath };
       } else {
         console.error('PDF file not found after conversion');
+        // Try alternative output location
+        const altPdfPath = path.join(uploadsDir, `${path.basename(docxPath, '.docx')}.pdf`);
+        if (fs.existsSync(altPdfPath)) {
+          console.log(`Found PDF at alternative path: ${altPdfPath}`);
+          fs.renameSync(altPdfPath, pdfPath);
+          const pdfSize = fs.statSync(pdfPath).size;
+          console.log(`PDF saved (renamed): ${pdfPath} (${pdfSize} bytes)`);
+          return { pdfPath, docxPath };
+        }
       }
     } else {
       console.warn('LibreOffice not found - PDF conversion skipped');

@@ -89,11 +89,42 @@ function insertPhoto(zip, documentXml, photoBuffer) {
   // STEP 1: Replace <mc:AlternateContent> blocks containing "picture" with inline drawing.
   // The regex matches <mc:AlternateContent>...</mc:AlternateContent> (non-greedy).
   // These blocks contain the {{picture}} text inside <v:textbox>/<wps:txbx>.
+  // IMPORTANT: Some mc:AlternateContent blocks contain BOTH picture AND other content (like Birthday).
+  // We need to preserve the non-picture content while replacing only the picture drawing.
   result = result.replace(
     /<mc:AlternateContent>[\s\S]*?<\/mc:AlternateContent>/g,
     (match) => {
       if (match.includes('picture')) {
-        return drawingXml;
+        // Extract and preserve content from the mc:Fallback section that isn't picture-related
+        // The mc:Fallback contains <v:textbox> with <w:txbxContent> that may have non-picture text
+        const fallbackMatch = match.match(/<mc:Fallback>([\s\S]*?)<\/mc:Fallback>/);
+        let preservedContent = '';
+        
+        if (fallbackMatch) {
+          const fallbackContent = fallbackMatch[1];
+          // Extract <w:txbxContent> from the fallback
+          const txbxMatch = fallbackContent.match(/<w:txbxContent>([\s\S]*?)<\/w:txbxContent>/);
+          if (txbxMatch) {
+            const txbxContent = txbxMatch[1];
+            // Find runs that don't contain picture-related text
+            const runRe = /<w:r\b[^>]*>[\s\S]*?<\/w:r>/g;
+            let runMatch;
+            while ((runMatch = runRe.exec(txbxContent)) !== null) {
+              const runXml = runMatch[0];
+              // Check if this run contains {{ or }} or picture
+              const tMatch = runXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/);
+              if (tMatch) {
+                const text = tMatch[1];
+                if (!text.includes('{{') && !text.includes('}}') && !text.includes('picture')) {
+                  preservedContent += runXml;
+                }
+              }
+            }
+          }
+        }
+        
+        // Return the preserved content plus the new inline drawing
+        return preservedContent + drawingXml;
       }
       return match; // keep non-picture mc:AlternateContent blocks unchanged
     }
@@ -270,13 +301,52 @@ function convertDocxToPdf(docxBuffer, studentId) {
         } catch (e) {}
       }
       if (!loPath) return null;
-      cmd = `"${loPath}" --headless --norestore --nolockcheck --convert-to pdf --outdir "${tmpDir}" --env:UserInstallation="file://${profileDir}" "${tmpDocx}"`;
+      
+      // Use absolute paths
+      const absDocxPath = path.resolve(tmpDocx);
+      const absOutDir = path.resolve(tmpDir);
+      const absProfileDir = path.resolve(profileDir);
+      
+      cmd = `"${loPath}" --headless --norestore --nolockcheck --convert-to pdf --outdir "${absOutDir}" --env:UserInstallation="file://${absProfileDir}" "${absDocxPath}"`;
     }
-    execSync(cmd, { timeout: 60000, windowsHide: true, stdio: 'pipe' });
+    
+    console.log(`PDF conversion cmd: ${cmd}`);
+    const { execSync } = require('child_process');
+    let stdout = '', stderr = '';
+    try {
+      const result = execSync(cmd, { 
+        timeout: 60000, 
+        windowsHide: true, 
+        stdio: 'pipe', 
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          HOME: profileDir,
+          TMPDIR: profileDir
+        }
+      });
+      stdout = result || '';
+    } catch(e) {
+      stdout = (e.stdout || '').toString();
+      stderr = (e.stderr || e.message).toString();
+    }
+    console.log(`PDF conversion stdout: ${stdout.substring(0, 200)}`);
+    console.log(`PDF conversion stderr: ${stderr.substring(0, 200)}`);
+    
     if (fs.existsSync(tmpPdf)) {
       const pdfBuffer = fs.readFileSync(tmpPdf);
       try { fs.unlinkSync(tmpPdf); } catch (e) {}
       return pdfBuffer;
+    } else {
+      console.error('PDF not found after conversion');
+      // Try alternative output location
+      const altPdfPath = path.join(tmpDir, `${path.basename(tmpDocx, '.docx')}.pdf`);
+      if (fs.existsSync(altPdfPath)) {
+        console.log(`Found PDF at alternative path: ${altPdfPath}`);
+        const pdfBuffer = fs.readFileSync(altPdfPath);
+        try { fs.unlinkSync(altPdfPath); } catch (e) {}
+        return pdfBuffer;
+      }
     }
   } catch (e) {
     console.error('PDF conversion failed:', e.message);
