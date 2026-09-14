@@ -22,6 +22,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
+# Verify Node.js and npm are installed
+RUN node --version && npm --version
+
 # Copy Windows fonts (Copperplate Gothic Bold, Consolas, Calibri)
 COPY fonts/ /usr/share/fonts/truetype/custom/
 
