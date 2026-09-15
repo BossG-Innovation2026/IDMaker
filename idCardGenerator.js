@@ -23,15 +23,7 @@ function escapeXml(str) {
     .replace(/"/g, '&quot;');
 }
 
-/**
- * Insert the student photo into the DOCX template by replacing the placeholder image.
- * 
- * Strategy: The template has an image placeholder (image1.jpeg → rId4).
- * We simply replace that image file in the ZIP with the student photo.
- * All positioning, sizing, and formatting stays intact.
- */
 function insertPhoto(zip, documentXml, photoBuffer) {
-  // Find the photo placeholder — try both .jpeg and .png
   let photoPlaceholder = null;
   for (const name of ['word/media/image1.jpeg', 'word/media/image1.png']) {
     if (zip.file(name)) {
@@ -39,16 +31,14 @@ function insertPhoto(zip, documentXml, photoBuffer) {
       break;
     }
   }
-  
+
   if (photoPlaceholder) {
     zip.file(photoPlaceholder, photoBuffer);
     console.log(`Replaced ${photoPlaceholder} with student photo (${photoBuffer.length} bytes)`);
   } else {
-    console.warn(`Photo placeholder ${photoPlaceholder} not found in template — photo not inserted`);
+    console.warn('Photo placeholder not found in template');
   }
 
-  // Photo frame stays at template's original size — no resize needed
-  // Just remove noChangeAspect lock so Word doesn't complain about aspect ratio
   const rid4Pos = documentXml.indexOf('r:embed="rId4"');
   if (rid4Pos >= 0) {
     const anchorStart = documentXml.lastIndexOf('<wp:anchor', rid4Pos);

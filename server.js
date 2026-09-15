@@ -9,7 +9,7 @@ const { v4: uuidv4 } = require('uuid');
 const googleDrive = require('./googleDrive');
 const store = require('./store');
 const uploadQueue = require('./uploadQueue');
-const { generateIDCard } = require('./idCardGenerator');
+const { generateIDCardDocx } = require('./idCardGenerator');
 
 // Load env vars in development
 if (process.env.NODE_ENV !== 'production') {
@@ -19,10 +19,28 @@ if (process.env.NODE_ENV !== 'production') {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Simple in-memory rate limiter: 10 requests per minute per IP
+const rateLimitMap = new Map();
+function rateLimiter(req, res, next) {
+  const ip = req.ip || req.connection.remoteAddress;
+  const now = Date.now();
+  const windowMs = 60000;
+  const maxReq = 10;
+  if (!rateLimitMap.has(ip)) rateLimitMap.set(ip, []);
+  const timestamps = rateLimitMap.get(ip).filter(t => now - t < windowMs);
+  if (timestamps.length >= maxReq) {
+    return res.status(429).json({ error: 'Too many requests. Please wait a moment.' });
+  }
+  timestamps.push(now);
+  rateLimitMap.set(ip, timestamps);
+  next();
+}
+setInterval(() => { rateLimitMap.clear(); }, 120000); // cleanup every 2min
+
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res, filePath) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -80,38 +98,29 @@ app.get('/api/classes', (req, res) => {
 
 // Generate ID card (DOCX only)
 function generateIDCardFile(student, photoBuf) {
-  const { generateIDCardDocx } = require('./idCardGenerator');
-  
-  let docxBuffer;
   try {
-    docxBuffer = generateIDCardDocx(student, photoBuf);
-  } catch (e) {
-    console.error('DOCX generation error:', e.message);
-    return { docxPath: null };
-  }
-  
-  if (!docxBuffer || docxBuffer.length < 100) {
-    console.error('DOCX buffer is empty or too small:', docxBuffer ? docxBuffer.length : 0);
-    return { docxPath: null };
-  }
-  
-  if (docxBuffer[0] !== 0x50 || docxBuffer[1] !== 0x4B) {
-    console.error('DOCX buffer is not a valid ZIP/DOCX file');
-    return { docxPath: null };
-  }
-  
-  const uploadsDir = path.join(__dirname, 'uploads');
-  const docxPath = path.join(uploadsDir, `${student.id}_ID.docx`);
-  
-  try {
+    const docxBuffer = generateIDCardDocx(student, photoBuf);
+
+    if (!docxBuffer || docxBuffer.length < 100) {
+      console.error('DOCX buffer is empty or too small:', docxBuffer ? docxBuffer.length : 0);
+      return { docxPath: null };
+    }
+
+    if (docxBuffer[0] !== 0x50 || docxBuffer[1] !== 0x4B) {
+      console.error('DOCX buffer is not a valid ZIP/DOCX file');
+      return { docxPath: null };
+    }
+
+    const uploadsDir = path.join(__dirname, 'uploads');
+    const docxPath = path.join(uploadsDir, `${student.id}_ID.docx`);
+
     fs.writeFileSync(docxPath, docxBuffer);
     console.log(`DOCX saved: ${docxPath} (${docxBuffer.length} bytes)`);
-  } catch (e) {
-    console.error('Failed to write DOCX:', e.message);
+    return { docxPath };
+  } catch (error) {
+    console.error('ID card generation failed:', error.message);
     return { docxPath: null };
   }
-  
-  return { docxPath };
 }
 
 function present(student) {
@@ -148,7 +157,7 @@ app.get('/api/students/check-duplicate', (req, res) => {
 });
 
 // Override endpoint — delete old + create new atomically
-app.post('/api/students/override', upload.single('photo'), async (req, res) => {
+app.post('/api/students/override', rateLimiter, upload.single('photo'), async (req, res) => {
   try {
     const {
       firstName, middleName, lastName, sex, birthday,
@@ -251,7 +260,7 @@ app.post('/api/students/override', upload.single('photo'), async (req, res) => {
 });
 
 // Submit student data with photo
-app.post('/api/students', upload.single('photo'), async (req, res) => {
+app.post('/api/students', rateLimiter, upload.single('photo'), async (req, res) => {
   try {
     const {
       firstName,
@@ -330,7 +339,9 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
     }
 
     store.add(student);
-    uploadQueue.enqueue(student.id);
+    // Pass prebuilt buffers to queue — skips re-reading from disk
+    const prebuiltFiles = { photo: photoBuf, photoExt: path.extname(student.photoPath) || '.jpg' };
+    uploadQueue.enqueue(student.id, prebuiltFiles);
 
     // Respond immediately; uploads continue in the background
     res.status(202).json({
@@ -409,7 +420,7 @@ app.get('/api/queue', (req, res) => {
 });
 
 // Manual re-sync of a single student
-app.post('/api/save-to-drive', (req, res) => {
+app.post('/api/save-to-drive', rateLimiter, (req, res) => {
   const { studentId } = req.body;
   const student = store.find(studentId);
   if (!student) {
@@ -429,8 +440,11 @@ app.listen(PORT, () => {
   console.log(`Classes available: ${classes.length} predefined`);
   console.log('Google Drive integration: Enabled');
 
-  // Recover unfinished uploads from a previous run
-  const pending = store.all().filter(s => s.uploadStatus !== 'uploaded');
+  // Load persisted queue from disk
+  uploadQueue.loadQueue();
+
+  // Recover unfinished uploads (skip already-uploaded)
+  const pending = store.all().filter(s => s.uploadStatus !== 'uploaded' && s.uploadStatus !== 'uploading');
   if (pending.length > 0) {
     console.log(`↻ Re-queuing ${pending.length} unfinished upload(s)`);
     pending.forEach(s => {

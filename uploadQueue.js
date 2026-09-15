@@ -3,49 +3,136 @@ const path = require('path');
 const store = require('./store');
 const googleDrive = require('./googleDrive');
 
-const CONCURRENCY = 2;
+const CONCURRENCY = 1;
 const MAX_ATTEMPTS = 3;
+const MAX_QUEUE_SIZE = 50;
+const RETRY_DELAYS = [5000, 15000, 45000];
+const IDLE_DELAY_MS = 5000;
 
 const queue = [];
 const queuedIds = new Set();
 let active = 0;
+let idleTimer = null;
 
-function enqueue(studentId) {
+// ── Persisted queue helpers ──────────────────────────────────────────
+const QUEUE_FILE = path.join(__dirname, 'data', 'upload-queue.json');
+
+function persistQueue() {
+  try {
+    const data = { queue, queuedIds: [...queuedIds] };
+    fs.writeFileSync(QUEUE_FILE, JSON.stringify(data), 'utf8');
+  } catch (e) {
+    console.error('[QUEUE] Failed to persist queue:', e.message);
+  }
+}
+
+function loadQueue() {
+  try {
+    if (fs.existsSync(QUEUE_FILE)) {
+      const data = JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8'));
+      if (Array.isArray(data.queue)) {
+        for (const id of data.queue) {
+          if (!queuedIds.has(id)) {
+            queue.push(id);
+            queuedIds.add(id);
+          }
+        }
+        console.log(`[QUEUE] Restored ${queue.length} pending jobs from disk`);
+      }
+    }
+  } catch (e) {
+    console.error('[QUEUE] Failed to load persisted queue:', e.message);
+  }
+}
+
+function clearPersisted() {
+  try { fs.unlinkSync(QUEUE_FILE); } catch (_) {}
+}
+
+// ── Public API ───────────────────────────────────────────────────────
+
+function enqueue(studentId, prebuiltFiles) {
   if (queuedIds.has(studentId)) return;
+  if (queue.length >= MAX_QUEUE_SIZE) {
+    console.warn(`[QUEUE] Queue full (${MAX_QUEUE_SIZE}), rejecting ${studentId}`);
+    return;
+  }
   queuedIds.add(studentId);
-  queue.push(studentId);
+  if (prebuiltFiles) {
+    queue.push({ id: studentId, prebuiltFiles });
+  } else {
+    queue.push({ id: studentId });
+  }
+  persistQueue();
   pump();
 }
 
 function pump() {
   while (active < CONCURRENCY && queue.length > 0) {
-    const id = queue.shift();
-    queuedIds.delete(id);
+    const job = queue.shift();
+    queuedIds.delete(typeof job === 'string' ? job : job.id);
     active++;
-    processStudent(id)
-      .catch(err => console.error('Queue job crashed:', err.message))
+    persistQueue();
+    processJob(job)
+      .catch(err => console.error('[QUEUE] Job crashed:', err.message))
       .finally(() => { active--; pump(); });
   }
+  scheduleIdleExcel();
 }
 
-function buildFiles(student) {
+// ── Idle Excel batch (P2 #5) ────────────────────────────────────────
+
+function scheduleIdleExcel() {
+  if (idleTimer) clearTimeout(idleTimer);
+  if (active > 0 || queue.length > 0) return;
+  idleTimer = setTimeout(async () => {
+    console.log('[QUEUE] Queue idle — generating Excel files...');
+    try {
+      const sections = new Set(store.all().map(s => s.section).filter(Boolean));
+      for (const section of sections) {
+        const sectionStudents = store.all().filter(s => s.section === section);
+        const folderId = googleDrive.folderCache[
+          `${process.env.GOOGLE_DRIVE_FOLDER_ID || '0ACktHqI8zSSCUk9PVA'}/${section}`
+        ];
+        if (folderId) {
+          await googleDrive.generateSectionExcel(section, sectionStudents, folderId);
+        }
+      }
+      const rootFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID || '0ACktHqI8zSSCUk9PVA';
+      await googleDrive.generateOverallLogsExcel(rootFolderId);
+    } catch (err) {
+      console.error('[QUEUE] Idle Excel generation failed:', err.message);
+    }
+  }, IDLE_DELAY_MS);
+}
+
+// ── File building (supports prebuilt buffers) ───────────────────────
+
+function buildFiles(student, prebuilt) {
   const base = `${student.lastName}_${student.firstName}`;
   const files = [];
 
-  const photoPath = path.join(__dirname, 'uploads', student.photoPath);
-  if (!fs.existsSync(photoPath)) {
-    console.error(`Photo file not found: ${photoPath}`);
-    return null;
+  if (prebuilt && prebuilt.photo) {
+    files.push({
+      key: 'photo',
+      name: `${base}_PIC${prebuilt.photoExt || '.jpg'}`,
+      mimeType: student.photoMime || 'image/jpeg',
+      buffer: prebuilt.photo
+    });
+  } else {
+    const photoPath = path.join(__dirname, 'uploads', student.photoPath);
+    if (!fs.existsSync(photoPath)) {
+      console.error(`Photo file not found: ${photoPath}`);
+      return null;
+    }
+    const photoExt = path.extname(student.photoPath) || '.jpg';
+    files.push({
+      key: 'photo',
+      name: `${base}_PIC${photoExt}`,
+      mimeType: student.photoMime || 'image/jpeg',
+      buffer: fs.readFileSync(photoPath)
+    });
   }
-
-  const photoExt = path.extname(student.photoPath) || '.jpg';
-  files.push({
-    key: 'photo',
-    name: `${base}_PIC${photoExt}`,
-    mimeType: student.photoMime || 'image/jpeg',
-    buffer: fs.readFileSync(photoPath)
-  });
-  console.log(`Photo ready: ${base}_PIC${photoExt} (${files[0].buffer.length} bytes)`);
 
   if (student.idCardDocxPath) {
     const docxPath = path.isAbsolute(student.idCardDocxPath)
@@ -59,29 +146,29 @@ function buildFiles(student) {
         mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         buffer: buf
       });
-      console.log(`ID Card (DOCX) ready: ${base}_ID.docx (${buf.length} bytes)`);
     } else {
       console.error(`DOCX file not found: ${docxPath}`);
     }
   }
 
-  console.log(`Total files to upload: ${files.length}`);
+  console.log(`[QUEUE] ${files.length} file(s) ready for ${base}`);
   return files.length > 0 ? files : null;
 }
 
-async function processStudent(id) {
+// ── Job processing ──────────────────────────────────────────────────
+
+async function processJob(job) {
+  const id = typeof job === 'string' ? job : job.id;
   const student = store.find(id);
   if (!student) return;
   if (student.uploadStatus === 'uploaded') return;
 
-  console.log(`\n=== Processing upload: ${student.lastName}_${student.firstName} (${student.section}) ===`);
+  console.log(`\n[QUEUE] Processing: ${student.lastName}_${student.firstName} (${student.section})`);
   store.update(id, { uploadStatus: 'uploading', uploadError: null });
 
-  const files = buildFiles(student);
+  const files = buildFiles(student, job.prebuiltFiles);
   if (!files) {
-    const msg = 'Files missing on disk - ID card generation may have failed';
-    console.error(msg);
-    store.update(id, { uploadStatus: 'failed', uploadError: msg });
+    store.update(id, { uploadStatus: 'failed', uploadError: 'Files missing on disk' });
     return;
   }
 
@@ -90,54 +177,67 @@ async function processStudent(id) {
     try {
       const results = {};
       let sectionFolderId = null;
-      for (const file of files) {
-        console.log(`Uploading ${file.name} (${(file.buffer.length / 1024).toFixed(1)}KB) to ${student.section}/...`);
+
+      // Upload photo + DOCX in parallel (P3 #11)
+      const uploadPromises = files.map(async (file) => {
+        console.log(`[QUEUE] Uploading ${file.name} (${(file.buffer.length / 1024).toFixed(1)}KB) → ${student.section}/`);
         const result = await googleDrive.uploadStudentPhoto(
           file.buffer, file.name, file.mimeType, student.section
         );
         if (!result.success) throw new Error(result.error || 'upload failed');
-        results[file.key] = result;
         if (result.folderId) sectionFolderId = result.folderId;
-        console.log(`Uploaded ${file.name} → ${result.fileLink}`);
+        console.log(`[QUEUE] Uploaded ${file.name} → ${result.fileLink}`);
+        return { key: file.key, result };
+      });
+
+      const uploadResults = await Promise.all(uploadPromises);
+      for (const { key, result } of uploadResults) {
+        results[key] = result;
       }
 
       const fileLinks = {
-        photo: results.photo ? results.photo.fileLink : null,
-        idCard: results.idCard ? results.idCard.fileLink : null,
-        idCardDocx: results.idCardDocx ? results.idCardDocx.fileLink : null
+        photo: results.photo?.fileLink || null,
+        idCard: results.idCard?.fileLink || null,
+        idCardDocx: results.idCardDocx?.fileLink || null
       };
-
-      if (sectionFolderId) {
-        const sectionStudents = store.all().filter(s => s.section === student.section);
-        console.log(`Generating Excel for ${student.section} (${sectionStudents.length} students)...`);
-        await googleDrive.generateSectionExcel(student.section, sectionStudents, sectionFolderId);
-      }
-
-      // Update overall logs Excel
-      try {
-        const rootFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID || '0ACktHqI8zSSCUk9PVA';
-        await googleDrive.generateOverallLogsExcel(rootFolderId);
-      } catch (logsErr) {
-        console.error('Failed to update overall logs:', logsErr.message);
-      }
 
       store.update(id, {
         uploadStatus: 'uploaded',
         uploadError: null,
         driveUploaded: true,
-        driveLink: results.photo ? results.photo.fileLink : null,
+        driveLink: fileLinks.photo,
         driveFiles: results
       });
-      console.log(`✓ Drive upload complete: ${student.lastName}_${student.firstName} → ${student.section}/`);
+      console.log(`[QUEUE] ✓ Upload complete: ${student.lastName}_${student.firstName}`);
+
+      // Auto-cleanup local files (P3 #10)
+      cleanupLocalFiles(student);
+
       return;
     } catch (error) {
       lastError = error.message || String(error);
-      console.error(`Drive upload attempt ${attempt}/${MAX_ATTEMPTS} failed (${id}): ${lastError}`);
-      if (attempt < MAX_ATTEMPTS) await sleep(1000 * Math.pow(2, attempt - 1));
+      console.error(`[QUEUE] Attempt ${attempt}/${MAX_ATTEMPTS} failed (${id}): ${lastError}`);
+      if (attempt < MAX_ATTEMPTS) await sleep(RETRY_DELAYS[attempt - 1]);
     }
   }
 
   store.update(id, { uploadStatus: 'failed', uploadError: lastError });
+}
+
+function cleanupLocalFiles(student) {
+  try {
+    const uploadsDir = path.join(__dirname, 'uploads');
+    if (student.photoPath) {
+      const p = path.join(uploadsDir, student.photoPath);
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+    if (student.idCardDocxPath) {
+      const p = path.join(uploadsDir, path.basename(student.idCardDocxPath));
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+  } catch (e) {
+    console.warn('[QUEUE] Cleanup error:', e.message);
+  }
 }
 
 function sleep(ms) {
@@ -148,4 +248,4 @@ function stats() {
   return { queued: queue.length, active, concurrency: CONCURRENCY };
 }
 
-module.exports = { enqueue, stats };
+module.exports = { enqueue, stats, loadQueue };
