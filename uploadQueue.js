@@ -131,8 +131,6 @@ async function processStudent(id) {
       };
 
       if (sectionFolderId) {
-        await googleDrive.appendStudentRow(student, fileLinks, sectionFolderId);
-        
         const sectionStudents = store.all().filter(s => s.section === student.section);
         console.log(`Generating Excel for ${student.section} (${sectionStudents.length} students)...`);
         await googleDrive.generateSectionExcel(student.section, sectionStudents, sectionFolderId);

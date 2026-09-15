@@ -5,19 +5,11 @@ const ExcelJS = require('exceljs');
 
 const PARENT_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || '0ACktHqI8zSSCUk9PVA';
 
-const SHEET_HEADERS = [
-    'Name', 'Section', 'LRN', 'Birthday', 'Address',
-    'Parent/Guardian', 'Contact', 'Photo Link', 'ID Card Link',
-    'Created Timestamp', 'Updated Timestamp'
-];
-
 class GoogleDriveService {
     constructor() {
         this.auth = null;
         this.drive = null;
-        this.sheets = null;
         this.folderCache = {};
-        this.sheetCache = {};
         this.initialized = false;
     }
 
@@ -42,7 +34,6 @@ class GoogleDriveService {
                 this.auth = oauth2Client;
                 this.authType = 'oauth2';
                 this.drive = google.drive({ version: 'v3', auth: this.auth });
-                this.sheets = google.sheets({ version: 'v4', auth: this.auth });
                 this.initialized = true;
                 console.log('✓ Google Drive initialized (OAuth2 user account)');
                 return;
@@ -84,11 +75,10 @@ class GoogleDriveService {
 
             this.auth = new google.auth.GoogleAuth({
                 credentials: credentials,
-                scopes: ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
+                scopes: ['https://www.googleapis.com/auth/drive']
             });
 
             this.drive = google.drive({ version: 'v3', auth: this.auth });
-            this.sheets = google.sheets({ version: 'v4', auth: this.auth });
             this.authType = 'service_account';
             this.initialized = true;
             console.log('✓ Google Drive initialized (service account)');
@@ -212,107 +202,6 @@ class GoogleDriveService {
             };
         }
     }
-    async getOrCreateSheet(section, folderId) {
-        await this.initialize();
-        if (!this.initialized) throw new Error('Google Drive not initialized');
-
-        const cacheKey = `sheet_${section}`;
-        if (this.sheetCache[cacheKey]) return this.sheetCache[cacheKey];
-
-        const sheetName = `${section} - Records`;
-
-        try {
-            const response = await this.drive.files.list({
-                q: `name='${sheetName}' and mimeType='application/vnd.google-apps.spreadsheet' and '${folderId}' in parents and trashed=false`,
-                fields: 'files(id, name)',
-                spaces: 'drive',
-                supportsAllDrives: true,
-                includeItemsFromAllDrives: true
-            });
-
-            if (response.data.files.length > 0) {
-                this.sheetCache[cacheKey] = response.data.files[0].id;
-                return response.data.files[0].id;
-            }
-
-            const spreadsheet = await this.sheets.spreadsheets.create({
-                resource: {
-                    properties: { title: sheetName },
-                    sheets: [{ properties: { title: 'Students' } }]
-                },
-                fields: 'spreadsheetId'
-            });
-
-            const spreadsheetId = spreadsheet.data.spreadsheetId;
-
-            await this.drive.files.update({
-                fileId: spreadsheetId,
-                addParents: folderId,
-                fields: 'id, parents',
-                supportsAllDrives: true
-            });
-
-            await this.sheets.spreadsheets.values.update({
-                spreadsheetId,
-                range: 'Students!A1:J1',
-                valueInputOption: 'RAW',
-                resource: { values: [SHEET_HEADERS] }
-            });
-
-            this.sheetCache[cacheKey] = spreadsheetId;
-            console.log(`Created spreadsheet: ${sheetName}`);
-            return spreadsheetId;
-        } catch (error) {
-            console.error('Error creating/finding sheet:', error.message);
-            throw error;
-        }
-    }
-
-    async appendStudentRow(student, fileLinks, folderId) {
-        await this.initialize();
-        if (!this.initialized) throw new Error('Google Drive not initialized');
-
-        try {
-            const spreadsheetId = await this.getOrCreateSheet(student.section, folderId);
-
-            const fullName = student.middleName
-                ? `${student.firstName} ${student.middleName} ${student.lastName}`
-                : `${student.firstName} ${student.lastName}`;
-
-            const formattedDate = new Date(student.birthday).toLocaleDateString('en-US', {
-                year: 'numeric', month: 'long', day: 'numeric'
-            });
-
-            const row = [
-                fullName,
-                student.section,
-                student.lrn,
-                formattedDate,
-                student.address,
-                student.parentName,
-                student.contactNumber,
-                fileLinks.photo || '',
-                fileLinks.idCard || '',
-                student.createdAt ? new Date(student.createdAt).toLocaleString() : new Date().toLocaleString(),
-                student.updatedAt ? new Date(student.updatedAt).toLocaleString() : ''
-            ];
-
-            await this.sheets.spreadsheets.values.append({
-                spreadsheetId,
-                range: 'Students!A:K',
-                valueInputOption: 'RAW',
-                insertDataOption: 'INSERT_ROWS',
-                resource: { values: [row] }
-            });
-
-            console.log(`Appended row to ${student.section} sheet: ${fullName}`);
-            return { success: true, spreadsheetId };
-        } catch (error) {
-            console.error('Error appending to sheet:', error.message);
-            return { success: false, error: error.message };
-        }
-    }
-
     async generateSectionExcel(section, students, folderId) {
         await this.initialize();
         if (!this.initialized) throw new Error('Google Drive not initialized');
@@ -399,106 +288,6 @@ class GoogleDriveService {
         }
     }
 
-    async copyMasterSpreadsheet(folderId) {
-        await this.initialize();
-        if (!this.initialized) throw new Error('Google Drive not initialized');
-
-        const MASTER_SHEET_ID = '1duo-HwSZC0lWoQkDZakTsRS_xDdfvkDLoNnNO5rmJnk';
-        const COPY_NAME = 'IDMaker - Master Student Records';
-
-        try {
-            // Check if already copied
-            const existing = await this.drive.files.list({
-                q: `name='${COPY_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and '${folderId}' in parents and trashed=false`,
-                fields: 'files(id)',
-                spaces: 'drive',
-                supportsAllDrives: true,
-                includeItemsFromAllDrives: true
-            });
-
-            if (existing.data.files.length > 0) {
-                console.log(`Master spreadsheet already exists: ${existing.data.files[0].id}`);
-                return existing.data.files[0].id;
-            }
-
-            // Copy from source
-            const copy = await this.drive.files.copy({
-                fileId: MASTER_SHEET_ID,
-                resource: { name: COPY_NAME },
-                supportsAllDrives: true
-            });
-
-            // Move to Shared Drive folder
-            await this.drive.files.update({
-                fileId: copy.data.id,
-                addParents: folderId,
-                removeParents: 'root',
-                fields: 'id, parents',
-                supportsAllDrives: true
-            });
-
-            console.log(`Copied master spreadsheet to Shared Drive: ${copy.data.id}`);
-            return copy.data.id;
-        } catch (error) {
-            console.error('Error copying master spreadsheet:', error.message);
-            return null;
-        }
-    }
-
-    async checkDuplicateLRN(lrn, folderId) {
-        await this.initialize();
-        if (!this.initialized) return { isDuplicate: false, error: 'Drive not initialized' };
-
-        const MASTER_SHEET_ID = '1duo-HwSZC0lWoQkDZakTsRS_xDdfvkDLoNnNO5rmJnk';
-
-        try {
-            // Try reading from the original master spreadsheet
-            const response = await this.sheets.spreadsheets.values.get({
-                spreadsheetId: MASTER_SHEET_ID,
-                range: 'A:Z'
-            });
-
-            const rows = response.data.values || [];
-            if (rows.length === 0) return { isDuplicate: false, entries: 0 };
-
-            // Find LRN column index from header
-            const headers = rows[0].map(h => h.toLowerCase().trim());
-            let lrnColIndex = headers.findIndex(h =>
-                h === 'lrn' || h === 'learner reference number' || h.includes('lrn')
-            );
-
-            // Fallback: try column C (index 2) if LRN not found in headers
-            if (lrnColIndex === -1) {
-                lrnColIndex = 2; // Column C
-            }
-
-            // Check all rows for this LRN
-            const matches = [];
-            for (let i = 1; i < rows.length; i++) {
-                const rowLrn = (rows[i][lrnColIndex] || '').toString().trim();
-                if (rowLrn === lrn) {
-                    matches.push({
-                        row: i + 1,
-                        name: rows[i][0] || '',
-                        section: rows[i][1] || '',
-                        lrn: rowLrn
-                    });
-                }
-            }
-
-            console.log(`[DUPLICATE CHECK] LRN ${lrn}: found ${matches.length} match(es) in ${rows.length - 1} records`);
-
-            return {
-                isDuplicate: matches.length > 0,
-                matches,
-                totalRecords: rows.length - 1
-            };
-        } catch (error) {
-            console.error('Error checking duplicate LRN:', error.message);
-            return { isDuplicate: false, error: error.message };
-        }
-    }
-
     async deleteDriveFile(fileId) {
         await this.initialize();
         if (!this.initialized || !fileId) return false;
@@ -531,45 +320,6 @@ class GoogleDriveService {
 
         console.log(`[DRIVE] Deleted ${deleted.length} Drive file(s) for ${student.firstName} ${student.lastName}`);
         return deleted;
-    }
-
-    async removeStudentFromSheet(student, folderId) {
-        await this.initialize();
-        if (!this.initialized) return false;
-
-        try {
-            const spreadsheetId = await this.getOrCreateSheet(student.section, folderId);
-            const response = await this.sheets.spreadsheets.values.get({
-                spreadsheetId,
-                range: 'Students!A:K'
-            });
-
-            const rows = response.data.values || [];
-            const lrn = (student.lrn || '').trim();
-
-            for (let i = 1; i < rows.length; i++) {
-                const rowLrn = (rows[i][2] || '').trim();
-                if (rowLrn === lrn) {
-                    await this.sheets.spreadsheets.values.batchUpdate({
-                        spreadsheetId,
-                        resource: {
-                            valueInputOption: 'RAW',
-                            data: [{
-                                range: `Students!A${i + 1}:K${i + 1}`,
-                                values: [['', '', '', '', '', '', '', '', '', '', '']]
-                            }]
-                        }
-                    });
-                    console.log(`[DRIVE] Cleared sheet row ${i + 1} for LRN ${lrn}`);
-                    return true;
-                }
-            }
-            console.log(`[DRIVE] No sheet row found for LRN ${lrn}`);
-            return false;
-        } catch (e) {
-            console.error('[DRIVE] Failed to remove student from sheet:', e.message);
-            return false;
-        }
     }
 
     async generateOverallLogsExcel(folderId) {

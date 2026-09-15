@@ -348,9 +348,6 @@ app.post('/api/students/override', upload.single('photo'), async (req, res) => {
     googleDrive.deleteStudentDriveFiles(existing, folderId).catch(e =>
       console.error('[OVERRIDE] Warning: Drive file deletion failed:', e.message)
     );
-    googleDrive.removeStudentFromSheet(existing, folderId).catch(e =>
-      console.error('[OVERRIDE] Warning: Sheet row removal failed:', e.message)
-    );
 
     // Enqueue upload for new student
     uploadQueue.enqueue(student.id);
