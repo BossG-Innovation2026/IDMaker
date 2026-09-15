@@ -518,6 +518,37 @@ async function checkBackgroundWhiteness(video, faceBox) {
     return bgCount > 0 ? bgSum / bgCount : 128;
 }
 
+async function checkWhiteness(source, faceRegion) {
+    const w = source.naturalWidth || source.width;
+    const h = source.naturalHeight || source.height;
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(source, 0, 0, w, h);
+
+    const imageData = ctx.getImageData(0, 0, w, h);
+    const data = imageData.data;
+
+    // Sample background pixels — skip the face region
+    let bgSum = 0, bgCount = 0;
+    for (let y = 0; y < h; y += 4) {
+        for (let x = 0; x < w; x += 4) {
+            if (faceRegion) {
+                const inFace = x >= faceRegion.x && x <= faceRegion.x + faceRegion.width &&
+                               y >= faceRegion.y && y <= faceRegion.y + faceRegion.height;
+                if (inFace) continue;
+            }
+            const idx = (y * w + x) * 4;
+            bgSum += (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+            bgCount++;
+        }
+    }
+    const avg = bgCount > 0 ? bgSum / bgCount : 0;
+    console.log('[WHITENESS] avg:', avg.toFixed(1), 'threshold: 200');
+    return avg;
+}
+
 function updateFaceChecks(faceDetected, centered, goodSize, goodLighting, whiteBg, straight) {
     const checks = {
         checkFace:   faceDetected,
@@ -656,6 +687,18 @@ async function processCapturedImage(source) {
         } catch (err) {
             console.warn('[PIPELINE] Detection failed:', err);
         }
+    }
+
+    // White background check
+    if (REQUIRE_WHITE_BG) {
+        const whiteness = await checkWhiteness(source, faceRegion);
+        if (whiteness < 200) {
+            console.log('[PIPELINE] White bg check FAILED:', whiteness.toFixed(1));
+            closeCameraModal();
+            showStatus('White background required — please use a plain white background', 'info');
+            return;
+        }
+        console.log('[PIPELINE] White bg check PASSED:', whiteness.toFixed(1));
     }
 
     capturedPhotoData = cropToSquare(source, faceRegion, srcW, srcH);
