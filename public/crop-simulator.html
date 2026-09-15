@@ -61,6 +61,20 @@
 <script>
 const DETECT_SIZE = 512;
 let uploadedImage = null;
+let modelsReady = false;
+
+(async () => {
+  try {
+    await faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/');
+    await faceapi.nets.faceLandmark68TinyNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/');
+    modelsReady = true;
+    document.getElementById('info').textContent = 'Models loaded — upload an image';
+    console.log('Models loaded');
+  } catch (err) {
+    document.getElementById('info').textContent = 'Failed to load models: ' + err.message;
+    console.error(err);
+  }
+})();
 
 document.getElementById('fillPct').addEventListener('input', e => {
   document.getElementById('fillVal').textContent = e.target.value + '%';
@@ -94,6 +108,10 @@ area.addEventListener('drop', e => {
 });
 
 async function processImage(source) {
+  if (!modelsReady) {
+    document.getElementById('info').textContent = 'Loading models, please wait...';
+    return;
+  }
   const srcW = source.naturalWidth || source.width;
   const srcH = source.naturalHeight || source.height;
   const fillPct = parseInt(document.getElementById('fillPct').value) / 100;
