@@ -620,75 +620,30 @@ function captureWithCanvas(video) {
 }
 
 async function detectAndCrop(source) {
-    let faceBox = null;
     const srcW = source.naturalWidth || source.width;
     const srcH = source.naturalHeight || source.height;
-    console.log('[CROP] Source size:', srcW, 'x', srcH);
+    console.log('[CROP] Source:', srcW, 'x', srcH);
 
-    if (modelsLoaded) {
-        try {
-            const detections = await faceapi
-                .detectAllFaces(source, new faceapi.TinyFaceDetectorOptions({ inputSize: 640, scoreThreshold: 0.5 }));
-            console.log('[CROP] Faces detected:', detections.length);
-            if (detections.length > 0) {
-                const detection = detections.reduce((prev, current) =>
-                    (prev.detection.box.area > current.detection.box.area) ? prev : current
-                );
-                faceBox = detection.detection.box;
-                console.log('[CROP] Face box:', JSON.stringify(faceBox));
-            }
-        } catch (err) {
-            console.warn('[CROP] Face detection failed:', err);
-        }
-    } else {
-        console.log('[CROP] Models not loaded, skipping detection');
-    }
-    capturedPhotoData = cropToSquare(source, faceBox);
-    console.log('[CROP] Output size: 600x600');
+    capturedPhotoData = cropToSquare(source);
     closeCameraModal();
     showPreviewModal();
 }
 
-function cropToSquare(source, faceBox) {
+function cropToSquare(source) {
     const w = source.naturalWidth || source.width;
     const h = source.naturalHeight || source.height;
-    console.log('[CROP] Source:', w, 'x', h, 'faceBox:', faceBox ? `${faceBox.x.toFixed(0)},${faceBox.y.toFixed(0)} ${faceBox.width.toFixed(0)}x${faceBox.height.toFixed(0)}` : 'null');
 
-    let cx, cy, cropSize;
+    const cropSize = Math.min(w, h);
+    const sx = Math.round((w - cropSize) / 2);
+    const sy = Math.round((h - cropSize) / 2);
 
-    if (faceBox) {
-        const faceCX = faceBox.x + faceBox.width / 2;
-        const faceCY = faceBox.y + faceBox.height / 2;
-        const faceDim = Math.max(faceBox.width, faceBox.height);
-        cropSize = faceDim * 1.1;
-        cx = faceCX;
-        cy = faceCY;
-    } else {
-        cropSize = Math.min(w, h);
-        cx = w / 2;
-        cy = h / 2;
-    }
-
-    cropSize = Math.min(cropSize, w, h);
-
-    let sx = Math.round(cx - cropSize / 2);
-    let sy = Math.round(cy - cropSize / 2);
-
-    if (sx < 0) sx = 0;
-    if (sy < 0) sy = 0;
-    if (sx + cropSize > w) sx = w - cropSize;
-    if (sy + cropSize > h) sy = h - cropSize;
-    sx = Math.max(0, sx);
-    sy = Math.max(0, sy);
-
-    console.log('[CROP] Region:', sx, sy, cropSize, 'x', cropSize, '-> 600x600');
+    console.log('[CROP] Center crop:', sx, sy, cropSize, 'x', cropSize, '-> 600x600');
 
     const out = document.createElement('canvas');
-    const size = 600;
-    out.width = size;
-    out.height = size;
+    out.width = 600;
+    out.height = 600;
     const ctx = out.getContext('2d');
-    ctx.drawImage(source, sx, sy, cropSize, cropSize, 0, 0, size, size);
+    ctx.drawImage(source, sx, sy, cropSize, cropSize, 0, 0, 600, 600);
     return out.toDataURL('image/jpeg', 0.92);
 }
 
