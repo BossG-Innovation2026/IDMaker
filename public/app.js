@@ -1244,6 +1244,17 @@ async function submitNewStudent() {
             setDriveNote('Uploading to Google Drive…', 'pending');
             pollUploadStatus(result.student.id);
             hideLoading();
+        } else if (response.status === 409 && result.duplicate) {
+            hideLoading();
+            const firstName = document.getElementById('firstName').value.trim();
+            const lastName = document.getElementById('lastName').value.trim();
+            const lrn = document.getElementById('lrn').value.trim();
+            showDuplicateModal({
+                isDuplicate: true,
+                matchedByName: result.matchedByName,
+                matchedByLRN: result.matchedByLRN,
+                matches: [result.existing]
+            }, firstName, lastName, lrn);
         } else {
             hideLoading();
             showStatus(result.error || 'Error saving data', 'info');

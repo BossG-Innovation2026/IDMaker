@@ -233,6 +233,21 @@ function present(student) {
   };
 }
 
+// Diagnostic endpoint — check Google Drive status
+app.get('/api/drive-status', async (req, res) => {
+  try {
+    const googleDrive = require('./googleDrive');
+    await googleDrive.initialize();
+    res.json({
+      initialized: googleDrive.initialized,
+      authType: googleDrive.authType || 'unknown',
+      canList: !!googleDrive.drive
+    });
+  } catch (error) {
+    res.json({ initialized: false, error: error.message });
+  }
+});
+
 // Check for duplicate student (LRN + surname + first name)
 app.get('/api/students/check-duplicate', (req, res) => {
   const { firstName, lastName, lrn } = req.query;
@@ -265,55 +280,7 @@ app.post('/api/students/override', upload.single('photo'), async (req, res) => {
       return res.status(404).json({ error: 'Existing student record not found' });
     }
 
-    // STEP 2: Delete old student-specific files
-    const uploadsDir = path.join(__dirname, 'uploads');
-    const filesDeleted = [];
-    const filesFailed = [];
-
-    function deleteFile(filePath, label) {
-      try {
-        const fullPath = path.join(uploadsDir, path.basename(filePath));
-        console.log(`[OVERRIDE] Deleting ${label}: ${fullPath}`);
-        if (fs.existsSync(fullPath)) {
-          fs.unlinkSync(fullPath);
-          filesDeleted.push(label);
-          console.log(`[OVERRIDE] ${label} deleted successfully`);
-        } else {
-          console.log(`[OVERRIDE] ${label} file not found on disk (may be on Render ephemeral storage)`);
-        }
-      } catch (e) {
-        filesFailed.push(label);
-        console.error(`Failed to delete ${label}:`, e.message);
-      }
-    }
-
-    if (existing.photoPath) deleteFile(existing.photoPath, 'photo');
-    if (existing.idCardDocxPath) deleteFile(existing.idCardDocxPath, 'DOCX');
-    if (existing.idCardPath) deleteFile(existing.idCardPath, 'PDF');
-
-    // If any critical file deletion failed, abort
-    if (filesFailed.length > 0) {
-      return res.status(500).json({
-        error: 'Override failed. The existing student record could not be completely removed. No new record was created.',
-        failedFiles: filesFailed
-      });
-    }
-
-    // STEP 3: Remove old record from store
-    store.remove(existing.id);
-    console.log(`[OVERRIDE] Deleted old record ${existing.id} (${existing.firstName} ${existing.lastName}) — files removed: ${filesDeleted.join(', ') || 'none'}`);
-
-    // STEP 3b: Delete old Google Drive files and sheet row
-    try {
-        const googleDrive = require('./googleDrive');
-        const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID || '0ACktHqI8zSSCUk9PVA';
-        await googleDrive.deleteStudentDriveFiles(existing, folderId);
-        await googleDrive.removeStudentFromSheet(existing, folderId);
-    } catch (driveErr) {
-        console.error('[OVERRIDE] Warning: failed to clean up Google Drive files:', driveErr.message);
-    }
-
-    // STEP 4: Create new student record
+    // STEP 2: Create NEW student record FIRST (before deleting old)
     const student = {
       id: uuidv4(),
       firstName, middleName: middleName || '', lastName, sex, birthday,
@@ -340,10 +307,49 @@ app.post('/api/students/override', upload.single('photo'), async (req, res) => {
         student.idCardMime = 'application/pdf';
       }
     } catch (idCardError) {
-      console.error('ID card generation error during override:', idCardError);
+      console.error('[OVERRIDE] ID card generation error:', idCardError.message);
     }
 
+    // Save new student to store
     store.add(student);
+
+    // STEP 3: Delete old files and record
+    const uploadsDir = path.join(__dirname, 'uploads');
+    const filesDeleted = [];
+
+    function deleteFile(filePath, label) {
+      try {
+        const fullPath = path.join(uploadsDir, path.basename(filePath));
+        console.log(`[OVERRIDE] Deleting ${label}: ${fullPath}`);
+        if (fs.existsSync(fullPath)) {
+          fs.unlinkSync(fullPath);
+          filesDeleted.push(label);
+          console.log(`[OVERRIDE] ${label} deleted successfully`);
+        }
+      } catch (e) {
+        console.error(`[OVERRIDE] Warning: failed to delete ${label}:`, e.message);
+      }
+    }
+
+    if (existing.photoPath) deleteFile(existing.photoPath, 'photo');
+    if (existing.idCardDocxPath) deleteFile(existing.idCardDocxPath, 'DOCX');
+    if (existing.idCardPath) deleteFile(existing.idCardPath, 'PDF');
+
+    // Remove old record from store
+    store.remove(existing.id);
+    console.log(`[OVERRIDE] Replaced ${existing.id} (${existing.firstName} ${existing.lastName}) → ${student.id} — files removed: ${filesDeleted.join(', ') || 'none'}`);
+
+    // Delete old Google Drive files and sheet row (non-blocking)
+    const googleDrive = require('./googleDrive');
+    const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID || '0ACktHqI8zSSCUk9PVA';
+    googleDrive.deleteStudentDriveFiles(existing, folderId).catch(e =>
+      console.error('[OVERRIDE] Warning: Drive file deletion failed:', e.message)
+    );
+    googleDrive.removeStudentFromSheet(existing, folderId).catch(e =>
+      console.error('[OVERRIDE] Warning: Sheet row removal failed:', e.message)
+    );
+
+    // Enqueue upload for new student
     uploadQueue.enqueue(student.id);
 
     res.status(202).json({
