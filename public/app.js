@@ -669,8 +669,8 @@ function cropToSquare(source, faceRegion, srcW, srcH) {
 
     if (faceRegion) {
         // faceRegion is the tight landmark-based face bounds with 15% padding
-        // Crop so that this region fills 80% of the square
-        cropSize = Math.max(faceRegion.width, faceRegion.height) / 0.8;
+        // Crop so that this region fills 85% of the square
+        cropSize = Math.max(faceRegion.width, faceRegion.height) / 0.85;
         cropSize = Math.min(cropSize, srcW, srcH);
 
         // Center on the face region
