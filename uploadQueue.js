@@ -138,6 +138,14 @@ async function processStudent(id) {
         await googleDrive.generateSectionExcel(student.section, sectionStudents, sectionFolderId);
       }
 
+      // Update overall logs Excel
+      try {
+        const rootFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID || '0ACktHqI8zSSCUk9PVA';
+        await googleDrive.generateOverallLogsExcel(rootFolderId);
+      } catch (logsErr) {
+        console.error('Failed to update overall logs:', logsErr.message);
+      }
+
       store.update(id, {
         uploadStatus: 'uploaded',
         uploadError: null,

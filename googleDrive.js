@@ -498,6 +498,171 @@ class GoogleDriveService {
             return { isDuplicate: false, error: error.message };
         }
     }
+
+    async deleteDriveFile(fileId) {
+        await this.initialize();
+        if (!this.initialized || !fileId) return false;
+        try {
+            await this.drive.files.delete({
+                fileId,
+                supportsAllDrives: true
+            });
+            console.log(`[DRIVE] Deleted file: ${fileId}`);
+            return true;
+        } catch (e) {
+            console.error(`[DRIVE] Failed to delete file ${fileId}:`, e.message);
+            return false;
+        }
+    }
+
+    async deleteStudentDriveFiles(student, folderId) {
+        await this.initialize();
+        if (!this.initialized) return;
+
+        const deleted = [];
+        const files = student.driveFiles || {};
+
+        for (const key of ['photo', 'idCard', 'idCardDocx']) {
+            if (files[key] && files[key].fileId) {
+                const ok = await this.deleteDriveFile(files[key].fileId);
+                if (ok) deleted.push(key);
+            }
+        }
+
+        console.log(`[DRIVE] Deleted ${deleted.length} Drive file(s) for ${student.firstName} ${student.lastName}`);
+        return deleted;
+    }
+
+    async removeStudentFromSheet(student, folderId) {
+        await this.initialize();
+        if (!this.initialized) return false;
+
+        try {
+            const spreadsheetId = await this.getOrCreateSheet(student.section, folderId);
+            const response = await this.sheets.spreadsheets.values.get({
+                spreadsheetId,
+                range: 'Students!A:K'
+            });
+
+            const rows = response.data.values || [];
+            const lrn = (student.lrn || '').trim();
+
+            for (let i = 1; i < rows.length; i++) {
+                const rowLrn = (rows[i][2] || '').trim();
+                if (rowLrn === lrn) {
+                    await this.sheets.spreadsheets.values.batchUpdate({
+                        spreadsheetId,
+                        resource: {
+                            valueInputOption: 'RAW',
+                            data: [{
+                                range: `Students!A${i + 1}:K${i + 1}`,
+                                values: [['', '', '', '', '', '', '', '', '', '', '']]
+                            }]
+                        }
+                    });
+                    console.log(`[DRIVE] Cleared sheet row ${i + 1} for LRN ${lrn}`);
+                    return true;
+                }
+            }
+            console.log(`[DRIVE] No sheet row found for LRN ${lrn}`);
+            return false;
+        } catch (e) {
+            console.error('[DRIVE] Failed to remove student from sheet:', e.message);
+            return false;
+        }
+    }
+
+    async generateOverallLogsExcel(folderId) {
+        await this.initialize();
+        if (!this.initialized) throw new Error('Google Drive not initialized');
+
+        try {
+            const store = require('./store');
+            const allStudents = store.all();
+
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('All Students');
+
+            worksheet.columns = [
+                { header: '#', key: 'num', width: 5 },
+                { header: 'LRN', key: 'lrn', width: 15 },
+                { header: 'Last Name', key: 'lastName', width: 18 },
+                { header: 'First Name', key: 'firstName', width: 18 },
+                { header: 'M.I.', key: 'mi', width: 8 },
+                { header: 'Sex', key: 'sex', width: 8 },
+                { header: 'Section', key: 'section', width: 15 },
+                { header: 'Birthday', key: 'birthday', width: 15 },
+                { header: 'Address', key: 'address', width: 30 },
+                { header: 'Parent/Guardian', key: 'parentName', width: 20 },
+                { header: 'Contact', key: 'contactNumber', width: 15 },
+                { header: 'Status', key: 'uploadStatus', width: 12 },
+                { header: 'Photo Link', key: 'photoLink', width: 25 },
+                { header: 'ID Card Link', key: 'idCardLink', width: 25 },
+                { header: 'Created', key: 'createdAt', width: 22 },
+                { header: 'Updated', key: 'updatedAt', width: 22 }
+            ];
+
+            worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2C3E50' } };
+
+            allStudents.forEach((s, i) => {
+                const mi = s.middleName ? s.middleName.charAt(0) + '.' : '';
+                const photoLink = s.driveFiles?.photo?.fileLink || '';
+                const idCardLink = s.driveFiles?.idCard?.fileLink || '';
+
+                worksheet.addRow({
+                    num: i + 1,
+                    lrn: s.lrn,
+                    lastName: s.lastName,
+                    firstName: s.firstName,
+                    mi: mi,
+                    sex: s.sex || '',
+                    section: s.section,
+                    birthday: s.birthday ? new Date(s.birthday).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '',
+                    address: s.address,
+                    parentName: s.parentName,
+                    contactNumber: s.contactNumber,
+                    uploadStatus: s.uploadStatus || '',
+                    photoLink: photoLink,
+                    idCardLink: idCardLink,
+                    createdAt: s.createdAt ? new Date(s.createdAt).toLocaleString() : '',
+                    updatedAt: s.updatedAt ? new Date(s.updatedAt).toLocaleString() : ''
+                });
+            });
+
+            const buffer = await workbook.xlsx.writeBuffer();
+            const fileName = 'IDMaker - Overall Student Logs.xlsx';
+
+            const existing = await this.drive.files.list({
+                q: `name='${fileName}' and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and '${folderId}' in parents and trashed=false`,
+                fields: 'files(id)',
+                spaces: 'drive',
+                supportsAllDrives: true,
+                includeItemsFromAllDrives: true
+            });
+
+            if (existing.data.files.length > 0) {
+                const { Readable } = require('stream');
+                await this.drive.files.update({
+                    fileId: existing.data.files[0].id,
+                    media: {
+                        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        body: Readable.from([buffer])
+                    },
+                    supportsAllDrives: true
+                });
+                console.log(`[DRIVE] Updated overall logs Excel (${allStudents.length} students)`);
+                return { success: true, fileId: existing.data.files[0].id };
+            } else {
+                const result = await this.uploadFile(buffer, fileName, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', folderId);
+                console.log(`[DRIVE] Created overall logs Excel (${allStudents.length} students)`);
+                return { success: true, fileId: result.id };
+            }
+        } catch (error) {
+            console.error('[DRIVE] Error generating overall logs:', error.message);
+            return { success: false, error: error.message };
+        }
+    }
 }
 
 module.exports = new GoogleDriveService();

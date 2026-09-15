@@ -273,9 +273,13 @@ app.post('/api/students/override', upload.single('photo'), async (req, res) => {
     function deleteFile(filePath, label) {
       try {
         const fullPath = path.join(uploadsDir, path.basename(filePath));
+        console.log(`[OVERRIDE] Deleting ${label}: ${fullPath}`);
         if (fs.existsSync(fullPath)) {
           fs.unlinkSync(fullPath);
           filesDeleted.push(label);
+          console.log(`[OVERRIDE] ${label} deleted successfully`);
+        } else {
+          console.log(`[OVERRIDE] ${label} file not found on disk (may be on Render ephemeral storage)`);
         }
       } catch (e) {
         filesFailed.push(label);
@@ -298,6 +302,16 @@ app.post('/api/students/override', upload.single('photo'), async (req, res) => {
     // STEP 3: Remove old record from store
     store.remove(existing.id);
     console.log(`[OVERRIDE] Deleted old record ${existing.id} (${existing.firstName} ${existing.lastName}) — files removed: ${filesDeleted.join(', ') || 'none'}`);
+
+    // STEP 3b: Delete old Google Drive files and sheet row
+    try {
+        const googleDrive = require('./googleDrive');
+        const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID || '0ACktHqI8zSSCUk9PVA';
+        await googleDrive.deleteStudentDriveFiles(existing, folderId);
+        await googleDrive.removeStudentFromSheet(existing, folderId);
+    } catch (driveErr) {
+        console.error('[OVERRIDE] Warning: failed to clean up Google Drive files:', driveErr.message);
+    }
 
     // STEP 4: Create new student record
     const student = {
