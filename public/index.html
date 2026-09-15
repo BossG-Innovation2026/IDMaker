@@ -23,10 +23,9 @@
                     <button type="button" class="btn-neu btn-secondary" onclick="openCameraModal()">
                         📷 Take Photo
                     </button>
-                    <!-- Upload button DISABLED - camera only -->
-                    <!-- <button type="button" class="btn-neu btn-secondary" onclick="document.getElementById('cameraInput').click()">
+                    <button type="button" class="btn-neu btn-secondary" onclick="document.getElementById('cameraInput').click()">
                         📂 Upload from Gallery
-                    </button> -->
+                    </button>
                     <div id="photoValidation" class="photo-validation hidden"></div>
                 </div>
 
@@ -306,7 +305,7 @@
     </div>
 
     <!-- Hidden file input for fallback (DISABLED) -->
-    <input type="file" id="cameraInput" name="photo" accept="image/*" capture="user" hidden disabled style="display:none;">
+    <input type="file" id="cameraInput" name="photo" accept="image/*" hidden>
 
     <!-- face-api.js (vladmandic fork) for face detection -->
     <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
