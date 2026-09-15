@@ -621,21 +621,30 @@ function captureWithCanvas(video) {
 
 async function detectAndCrop(source) {
     let faceBox = null;
+    const srcW = source.naturalWidth || source.width;
+    const srcH = source.naturalHeight || source.height;
+    console.log('[CROP] Source size:', srcW, 'x', srcH);
+
     if (modelsLoaded) {
         try {
             const detections = await faceapi
                 .detectAllFaces(source, new faceapi.TinyFaceDetectorOptions({ inputSize: 640, scoreThreshold: 0.5 }));
+            console.log('[CROP] Faces detected:', detections.length);
             if (detections.length > 0) {
                 const detection = detections.reduce((prev, current) =>
                     (prev.detection.box.area > current.detection.box.area) ? prev : current
                 );
                 faceBox = detection.detection.box;
+                console.log('[CROP] Face box:', JSON.stringify(faceBox));
             }
         } catch (err) {
-            console.warn('Face detection on captured image failed:', err);
+            console.warn('[CROP] Face detection failed:', err);
         }
+    } else {
+        console.log('[CROP] Models not loaded, skipping detection');
     }
     capturedPhotoData = cropToSquare(source, faceBox);
+    console.log('[CROP] Output size: 600x600');
     closeCameraModal();
     showPreviewModal();
 }
@@ -643,6 +652,7 @@ async function detectAndCrop(source) {
 function cropToSquare(source, faceBox) {
     const w = source.naturalWidth || source.width;
     const h = source.naturalHeight || source.height;
+    console.log('[CROP] Source:', w, 'x', h, 'faceBox:', faceBox ? `${faceBox.x.toFixed(0)},${faceBox.y.toFixed(0)} ${faceBox.width.toFixed(0)}x${faceBox.height.toFixed(0)}` : 'null');
 
     let cx, cy, cropSize;
 
@@ -650,7 +660,6 @@ function cropToSquare(source, faceBox) {
         const faceCX = faceBox.x + faceBox.width / 2;
         const faceCY = faceBox.y + faceBox.height / 2;
         const faceDim = Math.max(faceBox.width, faceBox.height);
-        // Crop 10% larger than face so face fills ~90% of the square
         cropSize = faceDim * 1.1;
         cx = faceCX;
         cy = faceCY;
@@ -660,20 +669,19 @@ function cropToSquare(source, faceBox) {
         cy = h / 2;
     }
 
-    // Clamp crop to image bounds — never exceed source dimensions
     cropSize = Math.min(cropSize, w, h);
 
     let sx = Math.round(cx - cropSize / 2);
     let sy = Math.round(cy - cropSize / 2);
 
-    // Clamp so crop stays within the image
     if (sx < 0) sx = 0;
     if (sy < 0) sy = 0;
     if (sx + cropSize > w) sx = w - cropSize;
     if (sy + cropSize > h) sy = h - cropSize;
-    // Final safety: ensure non-negative
     sx = Math.max(0, sx);
     sy = Math.max(0, sy);
+
+    console.log('[CROP] Region:', sx, sy, cropSize, 'x', cropSize, '-> 600x600');
 
     const out = document.createElement('canvas');
     const size = 600;
