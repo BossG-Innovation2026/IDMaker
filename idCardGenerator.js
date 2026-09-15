@@ -42,35 +42,39 @@ function insertPhoto(zip, documentXml, photoBuffer) {
   }
 
   // Enlarge the photo frame: find the wp:anchor containing rId4 and bump its extents
-  const anchorStart = documentXml.indexOf('<wp:anchor', documentXml.indexOf('r:embed="rId4"'));
-  const anchorEnd = documentXml.indexOf('</wp:anchor>', documentXml.indexOf('r:embed="rId4"'));
-  if (anchorStart >= 0 && anchorEnd > anchorStart) {
-    let anchor = documentXml.substring(anchorStart, anchorEnd + 12);
-    const newCx = '2200000';
-    const newCy = '2200000';
+  const rid4Pos = documentXml.indexOf('r:embed="rId4"');
+  if (rid4Pos >= 0) {
+    // Search BACKWARD from rId4 for the <wp:anchor opening tag
+    const anchorStart = documentXml.lastIndexOf('<wp:anchor', rid4Pos);
+    const anchorEnd = documentXml.indexOf('</wp:anchor>', rid4Pos);
+    if (anchorStart >= 0 && anchorEnd > anchorStart) {
+      let anchor = documentXml.substring(anchorStart, anchorEnd + 12);
+      const newCx = '2200000';
+      const newCy = '2200000';
 
-    // Replace wp:extent cx and cy
-    const wpExtIdx = anchor.indexOf('<wp:extent');
-    if (wpExtIdx >= 0) {
-      const wpExtEnd = anchor.indexOf('/>', wpExtIdx) + 2;
-      anchor = anchor.substring(0, wpExtIdx) +
-        '<wp:extent cx="' + newCx + '" cy="' + newCy + '"/>' +
-        anchor.substring(wpExtEnd);
+      // Replace wp:extent cx and cy
+      const wpExtIdx = anchor.indexOf('<wp:extent');
+      if (wpExtIdx >= 0) {
+        const wpExtEnd = anchor.indexOf('/>', wpExtIdx) + 2;
+        anchor = anchor.substring(0, wpExtIdx) +
+          '<wp:extent cx="' + newCx + '" cy="' + newCy + '"/>' +
+          anchor.substring(wpExtEnd);
+      }
+
+      // Replace pic:spPr a:xfrm a:ext
+      const spPrIdx = anchor.indexOf('<a:ext cx="');
+      if (spPrIdx >= 0) {
+        const spPrEnd = anchor.indexOf('/>', spPrIdx) + 2;
+        anchor = anchor.substring(0, spPrIdx) +
+          '<a:ext cx="' + newCx + '" cy="' + newCy + '"/>' +
+          anchor.substring(spPrEnd);
+      }
+
+      // Remove noChangeAspect lock
+      anchor = anchor.replace(/noChangeAspect="1"/g, 'noChangeAspect="0"');
+
+      documentXml = documentXml.substring(0, anchorStart) + anchor + documentXml.substring(anchorEnd + 12);
     }
-
-    // Replace pic:spPr a:xfrm a:ext
-    const spPrIdx = anchor.indexOf('<a:ext cx="');
-    if (spPrIdx >= 0) {
-      const spPrEnd = anchor.indexOf('/>', spPrIdx) + 2;
-      anchor = anchor.substring(0, spPrIdx) +
-        '<a:ext cx="' + newCx + '" cy="' + newCy + '"/>' +
-        anchor.substring(spPrEnd);
-    }
-
-    // Remove noChangeAspect lock
-    anchor = anchor.replace(/noChangeAspect="1"/g, 'noChangeAspect="0"');
-
-    documentXml = documentXml.substring(0, anchorStart) + anchor + documentXml.substring(anchorEnd + 12);
   }
 
   return documentXml;
