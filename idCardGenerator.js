@@ -7,12 +7,20 @@ const TEMPLATE_GRADE11 = path.join(__dirname, 'templates', 'idtemp2.docx');
 const TEMPLATE_ALS = path.join(__dirname, 'templates', 'idtemp3.docx');
 const TEMPLATE_SNED = path.join(__dirname, 'templates', 'idtemp4.docx');
 
+// Template 1 (id-template.docx): ADLER, ARISTOTLE, BERNOULLI, BLOOM, COMMERCE, ENTERPRENEURS, ERUDITE, H. DIAZ, PATRIOTS
+// Template 2 (idtemp2.docx): ALCARAZ, ANALYTICAL, CANNOLI, CHATTERTON, CROISSANT, DILIGENT, DRIVEN, MECHELIN, SAPIENTA
+// Template 3 (idtemp3.docx): ALS
+// Template 4 (idtemp4.docx): SNED
+const TEMPLATE1_SECTIONS = ['11 ADLER', '11 ARISTOTLE', '11 BERNOULLI', '11 BLOOM', '11 COMMERCE', '11 ENTERPRENEURS', '11 ERUDITE', '11 H. DIAZ', '11 PATRIOTS'];
+const TEMPLATE2_SECTIONS = ['11 ALCARAZ', '11 ANALYTICAL', '11 CANNOLI', '11 CHATTERTON', '11 CROISSANT', '11 DILIGENT', '11 DRIVEN', '11 MECHELIN', '11 SAPIENTA'];
+
 function getTemplatePath(section) {
   if (!section) return TEMPLATE_DEFAULT;
   const s = section.trim().toUpperCase();
   if (s === '11 ALS') return TEMPLATE_ALS;
   if (s === '11 SNED') return TEMPLATE_SNED;
-  if (s.startsWith('11 ')) return TEMPLATE_GRADE11;
+  if (TEMPLATE2_SECTIONS.includes(s)) return TEMPLATE_GRADE11;
+  if (TEMPLATE1_SECTIONS.includes(s)) return TEMPLATE_DEFAULT;
   return TEMPLATE_DEFAULT;
 }
 
@@ -57,7 +65,27 @@ function insertPhoto(zip, documentXml, photoBuffer) {
     const anchorEnd = documentXml.indexOf('</wp:anchor>', rid4Pos);
     if (anchorStart >= 0 && anchorEnd > anchorStart) {
       let anchor = documentXml.substring(anchorStart, anchorEnd + 12);
+
+      // Remove noChangeAspect lock
       anchor = anchor.replace(/noChangeAspect="1"/g, 'noChangeAspect="0"');
+
+      // Find wp:extent INSIDE this anchor block
+      const extentMatch = anchor.match(/<wp:extent[^>]+cx="(\d+)"[^>]+cy="(\d+)"/);
+      if (extentMatch) {
+        const cx = parseInt(extentMatch[1]);
+        const cy = parseInt(extentMatch[2]);
+        if (cx !== cy) {
+          const square = Math.min(cx, cy);
+          // Replace wp:extent dimensions
+          anchor = anchor.replace(/(<wp:extent[^>]*cx=")\d+(")/, `$1${square}$2`);
+          anchor = anchor.replace(/(<wp:extent[^>]*cy=")\d+(")/, `$1${square}$2`);
+          // Replace a:ext dimensions only inside <a:xfrm> (graphic frame transform)
+          anchor = anchor.replace(/(<a:xfrm>[^]*?<a:ext[^>]*cx=")\d+(")/, `$1${square}$2`);
+          anchor = anchor.replace(/(<a:xfrm>[^]*?<a:ext[^>]*cy=")\d+(")/, `$1${square}$2`);
+          console.log(`Resized photo frame to square: ${square} EMU (${(square / 914400).toFixed(2)}")`);
+        }
+      }
+
       documentXml = documentXml.substring(0, anchorStart) + anchor + documentXml.substring(anchorEnd + 12);
     }
   }
