@@ -96,14 +96,14 @@ function setupEventListeners() {
     setupBirthdayDisplay();
     setupAddressDropdowns();
     
-    // File upload from gallery — runs through same crop pipeline
+    // File upload from gallery — separate pipeline from camera
     document.getElementById('cameraInput').addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
             const reader = new FileReader();
             reader.onloadend = () => {
                 const img = new Image();
-                img.onload = () => processCapturedImage(img);
+                img.onload = () => processUploadedImage(img);
                 img.src = reader.result;
             };
             reader.readAsDataURL(file);
@@ -554,6 +554,178 @@ async function checkWhiteness(source, faceRegion) {
 
     console.log('[WHITENESS] avg:', avg.toFixed(1), 'white%:', whitePct.toFixed(1) + '%', 'threshold: 80% white');
     return { avg, whitePct };
+}
+
+// ============================================================
+// UPLOAD-SPECIFIC WHITE BACKGROUND DETECTION
+// ============================================================
+const WHITE_THRESHOLD = 185;
+const COLOR_TOLERANCE = 35;
+const REQUIRED_WHITE_PERCENT = 80;
+const WHITE_DETECTION_DEBUG = false;
+
+function detectWhiteBackground(source) {
+    const w = source.naturalWidth || source.width;
+    const h = source.naturalHeight || source.height;
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(source, 0, 0, w, h);
+    const imageData = ctx.getImageData(0, 0, w, h);
+    const data = imageData.data;
+
+    // Define 7 sampling zones — edges only, avoid center
+    const zones = {
+        topLeft:     { x1: 0,             y1: 0,              x2: Math.round(w * 0.25), y2: Math.round(h * 0.20) },
+        topCenter:   { x1: Math.round(w * 0.30), y1: 0,              x2: Math.round(w * 0.70), y2: Math.round(h * 0.15) },
+        topRight:    { x1: Math.round(w * 0.75), y1: 0,              x2: w,                     y2: Math.round(h * 0.20) },
+        left:        { x1: 0,             y1: Math.round(h * 0.25), x2: Math.round(w * 0.12), y2: Math.round(h * 0.75) },
+        right:       { x1: Math.round(w * 0.88), y1: Math.round(h * 0.25), x2: w,                     y2: Math.round(h * 0.75) },
+        bottomLeft:  { x1: 0,             y1: Math.round(h * 0.80), x2: Math.round(w * 0.25), y2: h },
+        bottomRight: { x1: Math.round(w * 0.75), y1: Math.round(h * 0.80), x2: w,                     y2: h }
+    };
+
+    const zoneResults = {};
+    let totalSampled = 0;
+    let totalWhite = 0;
+    let totalBrightness = 0;
+
+    for (const [name, z] of Object.entries(zones)) {
+        let zSampled = 0, zWhite = 0, zBrightness = 0;
+        for (let y = z.y1; y < z.y2; y += 3) {
+            for (let x = z.x1; x < z.x2; x += 3) {
+                const idx = (y * w + x) * 4;
+                const r = data[idx], g = data[idx + 1], b = data[idx + 2];
+                const brightness = (r + g + b) / 3;
+                const colorRange = Math.max(r, g, b) - Math.min(r, g, b);
+                const isWhite = brightness >= WHITE_THRESHOLD && colorRange <= COLOR_TOLERANCE;
+                zSampled++;
+                zBrightness += brightness;
+                if (isWhite) zWhite++;
+            }
+        }
+        const zPct = zSampled > 0 ? (zWhite / zSampled) * 100 : 0;
+        zoneResults[name] = {
+            sampled: zSampled,
+            white: zWhite,
+            pct: zPct,
+            avgBrightness: zSampled > 0 ? zBrightness / zSampled : 0
+        };
+        totalSampled += zSampled;
+        totalWhite += zWhite;
+        totalBrightness += zBrightness;
+    }
+
+    const overallWhitePct = totalSampled > 0 ? (totalWhite / totalSampled) * 100 : 0;
+    const overallAvgBrightness = totalSampled > 0 ? totalBrightness / totalSampled : 0;
+
+    const result = {
+        passed: overallWhitePct >= REQUIRED_WHITE_PERCENT,
+        whitePct: overallWhitePct,
+        averageBrightness: overallAvgBrightness,
+        sampledPixels: totalSampled,
+        whitePixels: totalWhite,
+        threshold: WHITE_THRESHOLD,
+        colorTolerance: COLOR_TOLERANCE,
+        requiredPercent: REQUIRED_WHITE_PERCENT,
+        zones: zoneResults
+    };
+
+    console.log('[UPLOAD WHITENESS]', {
+        passed: result.passed,
+        whitePct: result.whitePct.toFixed(1) + '%',
+        averageBrightness: result.averageBrightness.toFixed(1),
+        sampledPixels: result.sampledPixels,
+        whitePixels: result.whitePixels
+    });
+    console.log('[UPLOAD WHITENESS ZONES]', Object.fromEntries(
+        Object.entries(zoneResults).map(([k, v]) => [k, v.pct.toFixed(1) + '%'])
+    ));
+    console.log('[UPLOAD PIPELINE]', result.passed ? 'BACKGROUND PASS' : 'BACKGROUND FAIL');
+
+    return result;
+}
+
+// ============================================================
+// UPLOAD-SPECIFIC PROCESSING PIPELINE (DO NOT MODIFY CAMERA)
+// ============================================================
+async function processUploadedImage(source) {
+    const srcW = source.naturalWidth || source.width;
+    const srcH = source.naturalHeight || source.height;
+    console.log('[UPLOAD] Original image loaded:', srcW, 'x', srcH);
+
+    // Step 1: White background check FIRST — before any cropping
+    const bgResult = detectWhiteBackground(source);
+
+    if (!bgResult.passed) {
+        console.warn('[UPLOAD] Image rejected because background is not white enough');
+        showStatus(
+            'Background Check Failed\n\n' +
+            'White background detected: ' + bgResult.whitePct.toFixed(1) + '%\n' +
+            'Required: ' + bgResult.requiredPercent + '%\n\n' +
+            'Please upload another image with a plain white background.',
+            'info'
+        );
+        return;
+    }
+
+    console.log('[UPLOAD] Background passed. Continuing to face crop.');
+
+    // Step 2: Face detection
+    let faceRegion = null;
+    if (modelsLoaded) {
+        const DETECT_SIZE = 512;
+        const detectCanvas = document.createElement('canvas');
+        const scale = DETECT_SIZE / Math.max(srcW, srcH);
+        detectCanvas.width = Math.round(srcW * scale);
+        detectCanvas.height = Math.round(srcH * scale);
+        const dCtx = detectCanvas.getContext('2d');
+        dCtx.drawImage(source, 0, 0, detectCanvas.width, detectCanvas.height);
+
+        try {
+            const detections = await faceapi
+                .detectAllFaces(detectCanvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.4 }))
+                .withFaceLandmarks(true);
+
+            if (detections.length > 0) {
+                const det = detections.reduce((a, b) =>
+                    a.detection.box.area > b.detection.box.area ? a : b
+                );
+                const positions = det.landmarks.positions;
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                for (const p of positions) {
+                    if (p.x < minX) minX = p.x;
+                    if (p.y < minY) minY = p.y;
+                    if (p.x > maxX) maxX = p.x;
+                    if (p.y > maxY) maxY = p.y;
+                }
+                const tightW = maxX - minX;
+                const tightH = maxY - minY;
+                const padX = tightW * 0.15;
+                const padY = tightH * 0.15;
+                faceRegion = {
+                    x: (minX - padX) / scale,
+                    y: (minY - padY) / scale,
+                    width: (tightW + padX * 2) / scale,
+                    height: (tightH + padY * 2) / scale
+                };
+                console.log('[UPLOAD] Face detected:', Math.round(faceRegion.width), 'x', Math.round(faceRegion.height));
+            }
+        } catch (err) {
+            console.warn('[UPLOAD] Face detection failed:', err);
+        }
+    }
+
+    // Step 3: Crop to square
+    capturedPhotoData = cropToSquare(source, faceRegion, srcW, srcH);
+
+    // Step 4: Store whiteness for preview modal
+    lastWhiteness = bgResult;
+
+    // Step 5: Show preview
+    closeCameraModal();
+    showPreviewModal();
 }
 
 function updateFaceChecks(faceDetected, centered, goodSize, goodLighting, whiteBg, straight) {
