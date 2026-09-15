@@ -5,7 +5,7 @@ let faceDetectionInterval = null;
 let modelsLoaded = false;
 let capturedPhotoData = null;
 let allChecksPassed = false;
-const REQUIRE_WHITE_BG = false; // Set to true to re-enable white background check
+const REQUIRE_WHITE_BG = true; // Re-enabled
 
 // Barangay data for each town
 const barangays = {
