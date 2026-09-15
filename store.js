@@ -141,7 +141,7 @@ load();
 
 function reset() {
   students = [];
-  save();
+  persist();
 }
 
 function resetOverrides() {
