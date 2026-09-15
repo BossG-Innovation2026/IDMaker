@@ -1,3 +1,4 @@
+console.log('[APP] v99 — white bg button-disable active');
 const API_URL = '';
 let selectedFile = null;
 let videoStream = null;
@@ -757,19 +758,24 @@ function showPreviewModal() {
 
     const approveBtn = document.getElementById('approveBtn');
     const bgNote = document.getElementById('bgNote');
+    console.log('[PREVIEW] lastWhiteness:', lastWhiteness, 'REQUIRE_WHITE_BG:', REQUIRE_WHITE_BG);
 
     if (REQUIRE_WHITE_BG && lastWhiteness !== null && lastWhiteness < 200) {
+        console.log('[PREVIEW] Disabling approve button — bg too dark');
         approveBtn.setAttribute('disabled', 'disabled');
         approveBtn.textContent = '✕ Background not white';
         approveBtn.style.opacity = '0.4';
+        approveBtn.style.pointerEvents = 'none';
         if (bgNote) {
             bgNote.textContent = 'White background required (detected: ' + Math.round(lastWhiteness) + '/255)';
             bgNote.classList.remove('hidden');
         }
     } else {
+        console.log('[PREVIEW] Enabling approve button');
         approveBtn.removeAttribute('disabled');
         approveBtn.textContent = '✓ Use Photo';
         approveBtn.style.opacity = '1';
+        approveBtn.style.pointerEvents = 'auto';
         if (bgNote) {
             bgNote.textContent = '';
             bgNote.classList.add('hidden');
