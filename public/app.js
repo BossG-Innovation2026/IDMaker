@@ -1212,6 +1212,14 @@ async function pollDOCXQueue(queueId, student, attempt = 0) {
     const maxAttempts = 60;
     try {
         const res = await fetch(`${API_URL}/api/queue-status/${queueId}`);
+        
+        // 404 = job completed and cleaned up from memory
+        if (res.status === 404) {
+            hideQueueBar();
+            finalizeSubmission(student);
+            return;
+        }
+
         const data = await res.json();
 
         if (data.status === 'done') {
