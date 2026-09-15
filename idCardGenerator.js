@@ -4,9 +4,13 @@ const PizZip = require('pizzip');
 
 const TEMPLATE_DEFAULT = path.join(__dirname, 'templates', 'id-template.docx');
 const TEMPLATE_GRADE11 = path.join(__dirname, 'templates', 'idtemp2.docx');
+const TEMPLATE_ALS = path.join(__dirname, 'templates', 'idtemp3.docx');
 
 function getTemplatePath(section) {
-  if (section && section.trim().startsWith('11 ')) return TEMPLATE_GRADE11;
+  if (!section) return TEMPLATE_DEFAULT;
+  const s = section.trim().toUpperCase();
+  if (s === '11 ALS') return TEMPLATE_ALS;
+  if (s.startsWith('11 ')) return TEMPLATE_GRADE11;
   return TEMPLATE_DEFAULT;
 }
 
