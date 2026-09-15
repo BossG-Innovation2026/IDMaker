@@ -139,4 +139,15 @@ function checkDuplicate(firstName, lastName, lrn, excludeId) {
 
 load();
 
-module.exports = { all, find, add, update, remove, findByLRN, findByName, checkDuplicate, logOverride, allOverrides };
+function reset() {
+  students = [];
+  save();
+}
+
+function resetOverrides() {
+  overrides = [];
+  const oPath = path.join(__dirname, 'data', 'overrides.json');
+  if (fs.existsSync(oPath)) fs.writeFileSync(oPath, '[]', 'utf8');
+}
+
+module.exports = { all, find, add, update, remove, findByLRN, findByName, checkDuplicate, logOverride, allOverrides, reset, resetOverrides };

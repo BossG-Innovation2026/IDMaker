@@ -419,6 +419,55 @@ app.post('/api/save-to-drive', rateLimiter, (req, res) => {
   res.json({ success: true, message: 'Re-queued for upload', id: student.id });
 });
 
+// ── Reset endpoint — clears all local + Drive data ──────────────────
+app.post('/api/reset', rateLimiter, async (req, res) => {
+  try {
+    console.log('[RESET] Starting full data reset...');
+
+    // 1. Clear local student store
+    const students = store.all();
+    store.reset();
+    console.log(`[RESET] Cleared ${students.length} student records from store`);
+
+    // 2. Clear overrides
+    store.resetOverrides();
+    console.log('[RESET] Cleared overrides');
+
+    // 3. Delete local files in uploads/
+    const uploadsDir = path.join(__dirname, 'uploads');
+    let localFilesDeleted = 0;
+    if (fs.existsSync(uploadsDir)) {
+      const files = fs.readdirSync(uploadsDir);
+      for (const file of files) {
+        if (file === '.gitkeep') continue;
+        try {
+          fs.unlinkSync(path.join(uploadsDir, file));
+          localFilesDeleted++;
+        } catch (e) { /* skip */ }
+      }
+    }
+    console.log(`[RESET] Deleted ${localFilesDeleted} local files`);
+
+    // 4. Delete all Drive contents in root folder
+    const rootFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID || '0ACktHqI8zSSCUk9PVA';
+    const driveDeleted = await googleDrive.deleteFolderContents(rootFolderId);
+    console.log(`[RESET] Deleted ${driveDeleted} Drive files/folders`);
+
+    res.json({
+      success: true,
+      message: 'Full reset complete',
+      details: {
+        studentsCleared: students.length,
+        localFilesDeleted,
+        driveFilesDeleted: driveDeleted
+      }
+    });
+  } catch (error) {
+    console.error('[RESET] Error:', error.message);
+    res.status(500).json({ error: 'Reset failed: ' + error.message });
+  }
+});
+
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 

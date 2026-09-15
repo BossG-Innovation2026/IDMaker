@@ -461,6 +461,40 @@ class GoogleDriveService {
             return { success: false, error: error.message };
         }
     }
+
+    async deleteFolderContents(folderId) {
+        await this.initialize();
+        if (!this.initialized) throw new Error('Google Drive not initialized');
+
+        let pageToken = null;
+        let deleted = 0;
+        do {
+            const res = await this.drive.files.list({
+                q: `'${folderId}' in parents and trashed=false`,
+                fields: 'nextPageToken, files(id, name, mimeType)',
+                spaces: 'drive',
+                pageSize: 100,
+                pageToken: pageToken,
+                supportsAllDrives: true,
+                includeItemsFromAllDrives: true
+            });
+            for (const file of (res.data.files || [])) {
+                try {
+                    await this.drive.files.delete({
+                        fileId: file.id,
+                        supportsAllDrives: true
+                    });
+                    deleted++;
+                    console.log(`[RESET] Deleted: ${file.name}`);
+                } catch (e) {
+                    console.error(`[RESET] Failed to delete ${file.name}:`, e.message);
+                }
+            }
+            pageToken = res.data.nextPageToken;
+        } while (pageToken);
+
+        return deleted;
+    }
 }
 
 module.exports = new GoogleDriveService();
