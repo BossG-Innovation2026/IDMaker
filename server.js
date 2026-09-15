@@ -263,6 +263,23 @@ app.get('/api/students/check-duplicate', (req, res) => {
   }
 });
 
+// Check LRN against master Google Sheets
+app.get('/api/students/check-lrn/:lrn', async (req, res) => {
+  const { lrn } = req.params;
+  if (!lrn || lrn.length < 5) {
+    return res.json({ isDuplicate: false });
+  }
+
+  try {
+    const googleDrive = require('./googleDrive');
+    const result = await googleDrive.checkDuplicateLRN(lrn);
+    res.json(result);
+  } catch (error) {
+    console.error('LRN check error:', error.message);
+    res.json({ isDuplicate: false, error: error.message });
+  }
+});
+
 // Submit student data with photo
 app.post('/api/students', upload.single('photo'), async (req, res) => {
   try {

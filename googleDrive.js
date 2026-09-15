@@ -396,6 +396,106 @@ class GoogleDriveService {
             return { success: false, error: error.message };
         }
     }
+
+    async copyMasterSpreadsheet(folderId) {
+        await this.initialize();
+        if (!this.initialized) throw new Error('Google Drive not initialized');
+
+        const MASTER_SHEET_ID = '1duo-HwSZC0lWoQkDZakTsRS_xDdfvkDLoNnNO5rmJnk';
+        const COPY_NAME = 'IDMaker - Master Student Records';
+
+        try {
+            // Check if already copied
+            const existing = await this.drive.files.list({
+                q: `name='${COPY_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and '${folderId}' in parents and trashed=false`,
+                fields: 'files(id)',
+                spaces: 'drive',
+                supportsAllDrives: true,
+                includeItemsFromAllDrives: true
+            });
+
+            if (existing.data.files.length > 0) {
+                console.log(`Master spreadsheet already exists: ${existing.data.files[0].id}`);
+                return existing.data.files[0].id;
+            }
+
+            // Copy from source
+            const copy = await this.drive.files.copy({
+                fileId: MASTER_SHEET_ID,
+                resource: { name: COPY_NAME },
+                supportsAllDrives: true
+            });
+
+            // Move to Shared Drive folder
+            await this.drive.files.update({
+                fileId: copy.data.id,
+                addParents: folderId,
+                removeParents: 'root',
+                fields: 'id, parents',
+                supportsAllDrives: true
+            });
+
+            console.log(`Copied master spreadsheet to Shared Drive: ${copy.data.id}`);
+            return copy.data.id;
+        } catch (error) {
+            console.error('Error copying master spreadsheet:', error.message);
+            return null;
+        }
+    }
+
+    async checkDuplicateLRN(lrn, folderId) {
+        await this.initialize();
+        if (!this.initialized) return { isDuplicate: false, error: 'Drive not initialized' };
+
+        const MASTER_SHEET_ID = '1duo-HwSZC0lWoQkDZakTsRS_xDdfvkDLoNnNO5rmJnk';
+
+        try {
+            // Try reading from the original master spreadsheet
+            const response = await this.sheets.spreadsheets.values.get({
+                spreadsheetId: MASTER_SHEET_ID,
+                range: 'A:Z'
+            });
+
+            const rows = response.data.values || [];
+            if (rows.length === 0) return { isDuplicate: false, entries: 0 };
+
+            // Find LRN column index from header
+            const headers = rows[0].map(h => h.toLowerCase().trim());
+            let lrnColIndex = headers.findIndex(h =>
+                h === 'lrn' || h === 'learner reference number' || h.includes('lrn')
+            );
+
+            // Fallback: try column C (index 2) if LRN not found in headers
+            if (lrnColIndex === -1) {
+                lrnColIndex = 2; // Column C
+            }
+
+            // Check all rows for this LRN
+            const matches = [];
+            for (let i = 1; i < rows.length; i++) {
+                const rowLrn = (rows[i][lrnColIndex] || '').toString().trim();
+                if (rowLrn === lrn) {
+                    matches.push({
+                        row: i + 1,
+                        name: rows[i][0] || '',
+                        section: rows[i][1] || '',
+                        lrn: rowLrn
+                    });
+                }
+            }
+
+            console.log(`[DUPLICATE CHECK] LRN ${lrn}: found ${matches.length} match(es) in ${rows.length - 1} records`);
+
+            return {
+                isDuplicate: matches.length > 0,
+                matches,
+                totalRecords: rows.length - 1
+            };
+        } catch (error) {
+            console.error('Error checking duplicate LRN:', error.message);
+            return { isDuplicate: false, error: error.message };
+        }
+    }
 }
 
 module.exports = new GoogleDriveService();

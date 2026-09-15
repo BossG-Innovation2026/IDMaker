@@ -1140,6 +1140,36 @@ async function confirmAndGenerate() {
     } catch (err) {
         console.warn('Duplicate check failed, proceeding:', err);
     }
+
+    // Check LRN against master Google Sheets
+    const lrn = document.getElementById('lrn').value.trim();
+    if (lrn && lrn.length >= 5) {
+        try {
+            showLoading('Checking LRN in master records...');
+            const lrnRes = await fetch(`${API_URL}/api/students/check-lrn/${encodeURIComponent(lrn)}`);
+            const lrnData = await lrnRes.json();
+
+            if (lrnData.isDuplicate) {
+                hideLoading();
+                const match = lrnData.matches[0];
+                const confirmed = confirm(
+                    `LRN DUPLICATE FOUND!\n\n` +
+                    `LRN "${lrn}" already exists in the master spreadsheet.\n` +
+                    `Name: ${match.name}\n` +
+                    `Section: ${match.section}\n` +
+                    `Row: ${match.row}\n\n` +
+                    `Do you want to proceed anyway?`
+                );
+
+                if (!confirmed) {
+                    showStatus('Entry cancelled — duplicate LRN', 'info');
+                    return;
+                }
+            }
+        } catch (err) {
+            console.warn('LRN check failed, proceeding:', err);
+        }
+    }
     
     showLoading('Generating ID card...');
     
