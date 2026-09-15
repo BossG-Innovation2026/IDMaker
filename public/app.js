@@ -592,7 +592,7 @@ async function processCapturedImage(source) {
     const srcH = source.naturalHeight || source.height;
     console.log('[PIPELINE] Captured:', srcW, 'x', srcH);
 
-    let faceBox = null;
+    let faceRegion = null;
 
     if (modelsLoaded) {
         // Downscale to 512px for reliable detection
@@ -604,11 +604,10 @@ async function processCapturedImage(source) {
         const dCtx = detectCanvas.getContext('2d');
         dCtx.drawImage(source, 0, 0, detectCanvas.width, detectCanvas.height);
 
-        console.log('[PIPELINE] Detection on:', detectCanvas.width, 'x', detectCanvas.height, 'scale:', scale);
-
         try {
             const detections = await faceapi
-                .detectAllFaces(detectCanvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.4 }));
+                .detectAllFaces(detectCanvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.4 }))
+                .withFaceLandmarks(true);
 
             console.log('[PIPELINE] Faces found:', detections.length);
 
@@ -616,52 +615,68 @@ async function processCapturedImage(source) {
                 const det = detections.reduce((a, b) =>
                     a.detection.box.area > b.detection.box.area ? a : b
                 );
-                const box = det.detection.box;
 
-                // Map coordinates back to original image space
-                faceBox = {
-                    x: box.x / scale,
-                    y: box.y / scale,
-                    width: box.width / scale,
-                    height: box.height / scale
+                // Get all 68 landmark points and compute tight face bounds
+                const landmarks = det.landmarks;
+                const positions = landmarks.positions;
+
+                // Find min/max across all landmark points
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                for (const p of positions) {
+                    if (p.x < minX) minX = p.x;
+                    if (p.y < minY) minY = p.y;
+                    if (p.x > maxX) maxX = p.x;
+                    if (p.y > maxY) maxY = p.y;
+                }
+
+                // Add 15% padding around the tight landmark bounds
+                const tightW = maxX - minX;
+                const tightH = maxY - minY;
+                const padX = tightW * 0.15;
+                const padY = tightH * 0.15;
+
+                faceRegion = {
+                    x: (minX - padX) / scale,
+                    y: (minY - padY) / scale,
+                    width: (tightW + padX * 2) / scale,
+                    height: (tightH + padY * 2) / scale
                 };
 
-                console.log('[PIPELINE] Face (original coords):', 
-                    'x=' + Math.round(faceBox.x),
-                    'y=' + Math.round(faceBox.y),
-                    'w=' + Math.round(faceBox.width),
-                    'h=' + Math.round(faceBox.height));
+                console.log('[PIPELINE] Landmark face region:',
+                    'x=' + Math.round(faceRegion.x),
+                    'y=' + Math.round(faceRegion.y),
+                    'w=' + Math.round(faceRegion.width),
+                    'h=' + Math.round(faceRegion.height));
+
+                // Also log detector box for comparison
+                const box = det.detection.box;
+                console.log('[PIPELINE] Detector box (loose):',
+                    'w=' + Math.round(box.width / scale),
+                    'h=' + Math.round(box.height / scale));
             }
         } catch (err) {
             console.warn('[PIPELINE] Detection failed:', err);
         }
-    } else {
-        console.log('[PIPELINE] Models not loaded');
     }
 
-    capturedPhotoData = cropToSquare(source, faceBox, srcW, srcH);
+    capturedPhotoData = cropToSquare(source, faceRegion, srcW, srcH);
     closeCameraModal();
     showPreviewModal();
 }
 
-function cropToSquare(source, faceBox, srcW, srcH) {
+function cropToSquare(source, faceRegion, srcW, srcH) {
     let cropSize, cx, cy;
 
-    if (faceBox) {
-        // Face = 90% of square height
-        // faceBox.height should fill 90% of cropSize
-        cropSize = faceBox.height / 0.9;
-
-        // Ensure crop doesn't exceed image bounds
+    if (faceRegion) {
+        // faceRegion is the tight landmark-based face bounds with 15% padding
+        // Crop so that this region fills 90% of the square
+        cropSize = Math.max(faceRegion.width, faceRegion.height) / 0.9;
         cropSize = Math.min(cropSize, srcW, srcH);
 
-        // Center crop on face
-        cx = faceBox.x + faceBox.width / 2;
-        cy = faceBox.y + faceBox.height / 2;
+        // Center on the face region
+        cx = faceRegion.x + faceRegion.width / 2;
+        cy = faceRegion.y + faceRegion.height / 2;
 
-        console.log('[CROP] Face center:', Math.round(cx), Math.round(cy), 'cropSize:', Math.round(cropSize));
-
-        // Clamp to image bounds
         let sx = Math.round(cx - cropSize / 2);
         let sy = Math.round(cy - cropSize / 2);
         if (sx < 0) sx = 0;
@@ -671,7 +686,7 @@ function cropToSquare(source, faceBox, srcW, srcH) {
         sx = Math.max(0, sx);
         sy = Math.max(0, sy);
 
-        console.log('[CROP] Draw from:', sx, sy, Math.round(cropSize), '-> 600x600');
+        console.log('[CROP] Landmark crop:', sx, sy, Math.round(cropSize), '-> 600x600');
 
         const out = document.createElement('canvas');
         out.width = 600;
@@ -681,7 +696,7 @@ function cropToSquare(source, faceBox, srcW, srcH) {
         return out.toDataURL('image/jpeg', 0.92);
     }
 
-    // Fallback: center crop (no face detected)
+    // Fallback: center crop
     cropSize = Math.min(srcW, srcH);
     const sx = Math.round((srcW - cropSize) / 2);
     const sy = Math.round((srcH - cropSize) / 2);
