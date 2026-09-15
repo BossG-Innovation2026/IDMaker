@@ -43,6 +43,12 @@
     <span class="val" id="padVal">15%</span>
   </label>
 </div>
+<div class="controls">
+  <label>Crop Override (0=auto):
+    <input type="range" id="cropOverride" min="0" max="1000" value="0" step="5">
+    <span class="val" id="cropVal">auto</span>
+  </label>
+</div>
 
 <div class="row">
   <div class="box">
@@ -82,6 +88,10 @@ document.getElementById('fillPct').addEventListener('input', e => {
 });
 document.getElementById('padPct').addEventListener('input', e => {
   document.getElementById('padVal').textContent = e.target.value + '%';
+  if (uploadedImage) processImage(uploadedImage);
+});
+document.getElementById('cropOverride').addEventListener('input', e => {
+  document.getElementById('cropVal').textContent = e.target.value == 0 ? 'auto' : e.target.value + 'px';
   if (uploadedImage) processImage(uploadedImage);
 });
 
@@ -175,7 +185,9 @@ async function processImage(source) {
       );
 
       // Draw crop region (red dashed)
-      const cropSize = Math.max(faceRegion.width, faceRegion.height) / fillPct;
+      const overrideCrop = parseInt(document.getElementById('cropOverride').value);
+      const autoCrop = Math.max(faceRegion.width, faceRegion.height) / fillPct;
+      const cropSize = overrideCrop > 0 ? overrideCrop : autoCrop;
       const cx = faceRegion.x + faceRegion.width / 2;
       const cy = faceRegion.y + faceRegion.height / 2;
       let sx = cx - cropSize / 2;
