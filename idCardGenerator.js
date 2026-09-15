@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const PizZip = require('pizzip');
-const { execSync } = require('child_process');
 
 const TEMPLATE_PATH = path.join(__dirname, 'templates', 'id-template.docx');
 
@@ -181,104 +180,4 @@ function generateIDCardDocx(student, photoBuffer) {
   return zip.generate({ type: 'nodebuffer' });
 }
 
-function convertDocxToPdf(docxBuffer, studentId) {
-  const tmpDir = path.join(__dirname, 'uploads');
-  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-
-  const tmpDocx = path.join(tmpDir, `_tmp_${studentId}.docx`);
-  const tmpPdf = path.join(tmpDir, `_tmp_${studentId}.pdf`);
-  fs.writeFileSync(tmpDocx, docxBuffer);
-
-  try {
-    let cmd;
-    if (process.platform === 'win32') {
-      const loPaths = [
-        'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
-        'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe'
-      ];
-      const loPath = loPaths.find(p => fs.existsSync(p));
-      if (!loPath) return null;
-      cmd = `"${loPath}" --headless --norestore --nolockcheck --convert-to pdf --outdir "${tmpDir}" "${tmpDocx}"`;
-    } else {
-      const loPaths = [
-        '/usr/bin/libreoffice',
-        '/usr/bin/soffice',
-        '/usr/bin/libreoffice-writer'
-      ];
-      let loPath = null;
-      for (const p of loPaths) {
-        if (fs.existsSync(p)) { loPath = p; break; }
-      }
-      if (!loPath) {
-        try {
-          const result = require('child_process').execSync('which libreoffice 2>/dev/null || which soffice 2>/dev/null', { encoding: 'utf8', stdio: 'pipe' }).trim();
-          if (result) loPath = result;
-        } catch (e) {}
-      }
-      if (!loPath) return null;
-      
-      const absDocxPath = path.resolve(tmpDocx);
-      const absOutDir = path.resolve(tmpDir);
-      const profileDir = `/tmp/lo_profile_${studentId}`;
-      
-      const profileDir2 = `/tmp/lo_profile_${studentId}`;
-      try { require('fs').mkdirSync(profileDir2, { recursive: true }); } catch(e) {}
-      cmd = `"${loPath}" --headless --norestore --nolockcheck --nologo --env:UserInstallation="file://${profileDir2}" --convert-to pdf:writer_pdf_Export --outdir "${absOutDir}" "${absDocxPath}"`;
-    }
-    
-    console.log(`PDF conversion cmd: ${cmd}`);
-    const { execSync } = require('child_process');
-    let stdout = '', stderr = '';
-    try {
-      const result = execSync(cmd, { 
-        timeout: 120000, 
-        windowsHide: true, 
-        stdio: 'pipe', 
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          HOME: `/tmp/lo_profile_${studentId}`,
-          TMPDIR: `/tmp/lo_profile_${studentId}`,
-          SAL_USE_VCLPLUGIN: 'svp',
-          DISPLAY: ''
-        }
-      });
-      stdout = result || '';
-    } catch(e) {
-      stdout = (e.stdout || '').toString();
-      stderr = (e.stderr || '').toString();
-      if (!stderr && e.message) stderr = e.message;
-    }
-    console.log(`PDF conversion stdout: ${stdout.substring(0, 500)}`);
-    console.log(`PDF conversion stderr: ${stderr.substring(0, 500)}`);
-    
-    if (fs.existsSync(tmpPdf)) {
-      const pdfBuffer = fs.readFileSync(tmpPdf);
-      try { fs.unlinkSync(tmpPdf); } catch (e) {}
-      return pdfBuffer;
-    } else {
-      console.error('PDF not found after conversion');
-      // Check alternative output locations
-      const altPdfPath = path.join(tmpDir, `${path.basename(tmpDocx, '.docx')}.pdf`);
-      if (fs.existsSync(altPdfPath)) {
-        console.log(`Found PDF at alternative path: ${altPdfPath}`);
-        const pdfBuffer = fs.readFileSync(altPdfPath);
-        try { fs.unlinkSync(altPdfPath); } catch (e) {}
-        return pdfBuffer;
-      }
-    }
-  } catch (e) {
-    console.error('PDF conversion failed:', e.message);
-  } finally {
-    try { fs.unlinkSync(tmpDocx); } catch (e) {}
-  }
-  return null;
-}
-
-function generateIDCard(student, photoBuffer) {
-  const docxBuffer = generateIDCardDocx(student, photoBuffer);
-  const pdfBuffer = convertDocxToPdf(docxBuffer, student.id || Date.now().toString());
-  return pdfBuffer || docxBuffer;
-}
-
-module.exports = { generateIDCard, generateIDCardDocx };
+module.exports = { generateIDCardDocx };

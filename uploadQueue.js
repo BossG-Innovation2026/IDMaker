@@ -47,42 +47,19 @@ function buildFiles(student) {
   });
   console.log(`Photo ready: ${base}_PIC${photoExt} (${files[0].buffer.length} bytes)`);
 
-  if (student.idCardPath) {
-    const idPath = path.isAbsolute(student.idCardPath)
-      ? student.idCardPath
-      : path.join(__dirname, student.idCardPath);
-    if (fs.existsSync(idPath)) {
-      const ext = path.extname(idPath).slice(1) || 'pdf';
-      const isPdf = ext === 'pdf';
-      const buf = fs.readFileSync(idPath);
-      files.push({
-        key: 'idCard',
-        name: `${base}_ID.${ext}`,
-        mimeType: isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        buffer: buf
-      });
-      console.log(`ID Card (${ext.toUpperCase()}) ready: ${base}_ID.${ext} (${buf.length} bytes)`);
-    } else {
-      console.error(`ID Card file not found: ${idPath}`);
-    }
-  }
-
   if (student.idCardDocxPath) {
     const docxPath = path.isAbsolute(student.idCardDocxPath)
       ? student.idCardDocxPath
       : path.join(__dirname, student.idCardDocxPath);
     if (fs.existsSync(docxPath)) {
-      const alreadyHasDocx = files.find(f => f.name.endsWith('.docx'));
-      if (!alreadyHasDocx) {
-        const buf = fs.readFileSync(docxPath);
-        files.push({
-          key: 'idCardDocx',
-          name: `${base}_ID.docx`,
-          mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          buffer: buf
-        });
-        console.log(`ID Card (DOCX) ready: ${base}_ID.docx (${buf.length} bytes)`);
-      }
+      const buf = fs.readFileSync(docxPath);
+      files.push({
+        key: 'idCardDocx',
+        name: `${base}_ID.docx`,
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        buffer: buf
+      });
+      console.log(`ID Card (DOCX) ready: ${base}_ID.docx (${buf.length} bytes)`);
     } else {
       console.error(`DOCX file not found: ${docxPath}`);
     }

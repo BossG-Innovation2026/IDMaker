@@ -78,7 +78,7 @@ app.get('/api/classes', (req, res) => {
   res.json(classes);
 });
 
-// Generate ID card (PDF + DOCX on Render, DOCX locally)
+// Generate ID card (DOCX only)
 function generateIDCardFile(student, photoBuf) {
   const { generateIDCardDocx } = require('./idCardGenerator');
   
@@ -87,17 +87,17 @@ function generateIDCardFile(student, photoBuf) {
     docxBuffer = generateIDCardDocx(student, photoBuf);
   } catch (e) {
     console.error('DOCX generation error:', e.message);
-    return { pdfPath: null, docxPath: null };
+    return { docxPath: null };
   }
   
   if (!docxBuffer || docxBuffer.length < 100) {
     console.error('DOCX buffer is empty or too small:', docxBuffer ? docxBuffer.length : 0);
-    return { pdfPath: null, docxPath: null };
+    return { docxPath: null };
   }
   
   if (docxBuffer[0] !== 0x50 || docxBuffer[1] !== 0x4B) {
     console.error('DOCX buffer is not a valid ZIP/DOCX file');
-    return { pdfPath: null, docxPath: null };
+    return { docxPath: null };
   }
   
   const uploadsDir = path.join(__dirname, 'uploads');
@@ -108,124 +108,10 @@ function generateIDCardFile(student, photoBuf) {
     console.log(`DOCX saved: ${docxPath} (${docxBuffer.length} bytes)`);
   } catch (e) {
     console.error('Failed to write DOCX:', e.message);
-    return { pdfPath: null, docxPath: null };
+    return { docxPath: null };
   }
   
-  try {
-    const { execSync, execSync: execSync2 } = require('child_process');
-    let loPath = null;
-    if (process.platform !== 'win32') {
-      const paths = ['/usr/bin/libreoffice', '/usr/bin/soffice', '/usr/bin/libreoffice-writer'];
-      for (const p of paths) { if (fs.existsSync(p)) { loPath = p; break; } }
-      if (!loPath) {
-        try { loPath = require('child_process').execSync('which libreoffice 2>/dev/null || which soffice 2>/dev/null', { encoding: 'utf8', stdio: 'pipe' }).trim(); } catch(e) {}
-      }
-    }
-    
-    if (loPath) {
-      const pdfPath = path.join(uploadsDir, `${student.id}_ID.pdf`);
-      console.log(`Converting DOCX to PDF: ${loPath}`);
-      console.log(`Input DOCX: ${docxPath} (exists: ${fs.existsSync(docxPath)}, size: ${fs.statSync(docxPath).size})`);
-      console.log(`Output dir: ${uploadsDir} (exists: ${fs.existsSync(uploadsDir)})`);
-      
-      // Verify LibreOffice can run at all
-      try {
-        const loVersion = execSync(`"${loPath}" --version`, { encoding: 'utf8', timeout: 10000, stdio: 'pipe' });
-        console.log(`LibreOffice version: ${loVersion.trim()}`);
-      } catch(e) {
-        console.error(`LibreOffice --version failed: ${e.message}`);
-      }
-      
-      const absDocxPath = path.resolve(docxPath);
-      const absOutDir = path.resolve(uploadsDir);
-      
-      // Profile dir in /tmp — must exist and be writable before LibreOffice starts
-      const profileDir = `/tmp/lo_profile_${student.id}`;
-      try { fs.mkdirSync(profileDir, { recursive: true }); } catch(e) {}
-      
-      // --env:UserInstallation with file:/// (3 slashes) is required on Linux Docker.
-      // Without it LibreOffice silently crashes trying to write its lock files as root.
-      // Use explicit writer_pdf_Export filter to avoid ambiguity.
-      const cmd = `"${loPath}" --headless --norestore --nolockcheck --nologo --env:UserInstallation="file://${profileDir}" --convert-to pdf:writer_pdf_Export --outdir "${absOutDir}" "${absDocxPath}"`;
-      console.log(`LibreOffice cmd: ${cmd}`);
-      
-      let stdout = '', stderr = '';
-      try {
-        const result = execSync(cmd, { 
-          timeout: 120000, 
-          windowsHide: true, 
-          stdio: 'pipe', 
-          encoding: 'utf8',
-          env: {
-            ...process.env,
-            HOME: profileDir,
-            TMPDIR: profileDir,
-            SAL_USE_VCLPLUGIN: 'svp',
-            DISPLAY: ''
-          }
-        });
-        stdout = result || '';
-      } catch(e) {
-        stdout = (e.stdout || '').toString();
-        stderr = (e.stderr || '').toString();
-        if (!stderr && e.message) stderr = e.message;
-      }
-      console.log(`LibreOffice stdout: ${stdout.substring(0, 500)}`);
-      console.log(`LibreOffice stderr: ${stderr.substring(0, 500)}`);
-      
-      // Cleanup profile
-      try { fs.rmSync(profileDir, { recursive: true, force: true }); } catch(e) {}
-      
-      // List all files in uploads dir with student.id
-      try {
-        const files = fs.readdirSync(uploadsDir).filter(f => f.includes(student.id));
-        console.log(`Uploads dir files for ${student.id}: ${files.join(', ')}`);
-      } catch(e) {}
-      
-      // Also check if PDF ended up in current working directory or /tmp
-      const altLocations = [
-        path.join(process.cwd(), `${path.basename(absDocxPath, '.docx')}.pdf`),
-        `/tmp/${path.basename(absDocxPath, '.docx')}.pdf`,
-        pdfPath
-      ];
-      
-      for (const altPdf of altLocations) {
-        if (fs.existsSync(altPdf) && altPdf !== pdfPath) {
-          console.log(`Found PDF at alternative location: ${altPdf}`);
-          try {
-            fs.copyFileSync(altPdf, pdfPath);
-            fs.unlinkSync(altPdf);
-            console.log(`Copied PDF to: ${pdfPath}`);
-          } catch(e) {
-            console.error(`Failed to copy PDF: ${e.message}`);
-          }
-        }
-      }
-      
-      if (fs.existsSync(pdfPath)) {
-        const pdfSize = fs.statSync(pdfPath).size;
-        console.log(`PDF saved: ${pdfPath} (${pdfSize} bytes)`);
-        return { pdfPath, docxPath };
-      } else {
-        console.error('PDF file not found after conversion');
-        // Try alternative output location
-        const altPdfPath = path.join(uploadsDir, `${path.basename(docxPath, '.docx')}.pdf`);
-        if (fs.existsSync(altPdfPath)) {
-          console.log(`Found PDF at alternative path: ${altPdfPath}`);
-          fs.renameSync(altPdfPath, pdfPath);
-          const pdfSize = fs.statSync(pdfPath).size;
-          console.log(`PDF saved (renamed): ${pdfPath} (${pdfSize} bytes)`);
-          return { pdfPath, docxPath };
-        }
-      }
-    } else {
-      console.warn('LibreOffice not found - PDF conversion skipped');
-    }
-  } catch (e) {
-    console.error('PDF conversion error:', e.message);
-  }
-  
-  return { pdfPath: null, docxPath };
+  return { docxPath };
 }
 
 function present(student) {
@@ -304,10 +190,6 @@ app.post('/api/students/override', upload.single('photo'), async (req, res) => {
       if (result.docxPath && fs.existsSync(result.docxPath)) {
         student.idCardDocxPath = `uploads/${path.basename(result.docxPath)}`;
       }
-      if (result.pdfPath && fs.existsSync(result.pdfPath)) {
-        student.idCardPath = `uploads/${path.basename(result.pdfPath)}`;
-        student.idCardMime = 'application/pdf';
-      }
     } catch (idCardError) {
       console.error('[OVERRIDE] ID card generation error:', idCardError.message);
     }
@@ -335,7 +217,6 @@ app.post('/api/students/override', upload.single('photo'), async (req, res) => {
 
     if (existing.photoPath) deleteFile(existing.photoPath, 'photo');
     if (existing.idCardDocxPath) deleteFile(existing.idCardDocxPath, 'DOCX');
-    if (existing.idCardPath) deleteFile(existing.idCardPath, 'PDF');
 
     // Log the old record as overridden BEFORE removing it
     store.logOverride({ ...existing, overriddenAt: new Date().toISOString() });
@@ -444,13 +325,6 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
         student.idCardDocxPath = `uploads/${path.basename(result.docxPath)}`;
         console.log(`DOCX ready: ${student.idCardDocxPath}`);
       }
-      if (result.pdfPath && fs.existsSync(result.pdfPath)) {
-        student.idCardPath = `uploads/${path.basename(result.pdfPath)}`;
-        student.idCardMime = 'application/pdf';
-        console.log(`PDF ready: ${student.idCardPath}`);
-      } else {
-        console.warn('PDF not generated - DOCX will be uploaded only');
-      }
     } catch (idCardError) {
       console.error('ID card generation failed:', idCardError.message);
     }
@@ -506,8 +380,8 @@ app.delete('/api/students/:id', (req, res) => {
       const p = path.join(uploadsDir, student.photoPath);
       if (fs.existsSync(p)) fs.unlinkSync(p);
     }
-    if (student.idCardPath) {
-      const p = path.join(uploadsDir, path.basename(student.idCardPath));
+    if (student.idCardDocxPath) {
+      const p = path.join(uploadsDir, path.basename(student.idCardDocxPath));
       if (fs.existsSync(p)) fs.unlinkSync(p);
     }
   } catch (e) {

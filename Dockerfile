@@ -3,7 +3,7 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV HOME=/tmp
 
-# Install Node.js 20 + LibreOffice + dependencies
+# Install Node.js 20 + dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     curl \
@@ -15,8 +15,6 @@ RUN apt-get update && \
     && apt-get update && \
     apt-get install -y --no-install-recommends \
     nodejs \
-    libreoffice \
-    libreoffice-writer \
     fonts-liberation \
     fonts-dejavu-core \
     fontconfig \
