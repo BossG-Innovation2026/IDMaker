@@ -5,7 +5,8 @@ let faceDetectionInterval = null;
 let modelsLoaded = false;
 let capturedPhotoData = null;
 let allChecksPassed = false;
-const REQUIRE_WHITE_BG = true; // Re-enabled
+const REQUIRE_WHITE_BG = true;
+let lastWhiteness = null; // Track whiteness of last captured photo
 
 // Barangay data for each town
 const barangays = {
@@ -690,15 +691,11 @@ async function processCapturedImage(source) {
     }
 
     // White background check
+    lastWhiteness = null;
     if (REQUIRE_WHITE_BG) {
         const whiteness = await checkWhiteness(source, faceRegion);
-        if (whiteness < 200) {
-            console.log('[PIPELINE] White bg check FAILED:', whiteness.toFixed(1));
-            closeCameraModal();
-            showStatus('White background required — please use a plain white background', 'info');
-            return;
-        }
-        console.log('[PIPELINE] White bg check PASSED:', whiteness.toFixed(1));
+        lastWhiteness = whiteness;
+        console.log('[PIPELINE] Whiteness:', whiteness.toFixed(1), whiteness >= 200 ? 'PASS' : 'FAIL');
     }
 
     capturedPhotoData = cropToSquare(source, faceRegion, srcW, srcH);
@@ -757,9 +754,34 @@ function showPreviewModal() {
     const modal = document.getElementById('previewModal');
     modal.classList.remove('hidden');
     document.getElementById('capturedPhoto').src = capturedPhotoData;
+
+    const approveBtn = document.getElementById('approveBtn');
+    const bgNote = document.getElementById('bgNote');
+
+    if (REQUIRE_WHITE_BG && lastWhiteness !== null && lastWhiteness < 200) {
+        approveBtn.setAttribute('disabled', 'disabled');
+        approveBtn.textContent = '✕ Background not white';
+        approveBtn.style.opacity = '0.4';
+        if (bgNote) {
+            bgNote.textContent = 'White background required (detected: ' + Math.round(lastWhiteness) + '/255)';
+            bgNote.classList.remove('hidden');
+        }
+    } else {
+        approveBtn.removeAttribute('disabled');
+        approveBtn.textContent = '✓ Use Photo';
+        approveBtn.style.opacity = '1';
+        if (bgNote) {
+            bgNote.textContent = '';
+            bgNote.classList.add('hidden');
+        }
+    }
 }
 
 function approvePhoto() {
+    if (REQUIRE_WHITE_BG && lastWhiteness !== null && lastWhiteness < 200) {
+        showStatus('White background required', 'info');
+        return;
+    }
     selectedFile = dataURLtoFile(capturedPhotoData, 'photo.jpg');
     
     const preview = document.getElementById('photoPreview');

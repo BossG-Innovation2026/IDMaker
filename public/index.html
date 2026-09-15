@@ -235,11 +235,12 @@
                     <img id="capturedPhoto" src="" alt="Captured">
                 </div>
             </div>
+            <div id="bgNote" class="photo-validation hidden" style="margin: 0 20px;"></div>
             <div class="preview-actions">
                 <button type="button" class="btn-neu btn-reject" onclick="rejectPhoto()">
                     ✕ Retake
                 </button>
-                <button type="button" class="btn-neu btn-approve" onclick="approvePhoto()">
+                <button type="button" class="btn-neu btn-approve" id="approveBtn" onclick="approvePhoto()">
                     ✓ Use Photo
                 </button>
             </div>
