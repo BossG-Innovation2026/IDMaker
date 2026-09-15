@@ -2,7 +2,13 @@ const fs = require('fs');
 const path = require('path');
 const PizZip = require('pizzip');
 
-const TEMPLATE_PATH = path.join(__dirname, 'templates', 'id-template.docx');
+const TEMPLATE_DEFAULT = path.join(__dirname, 'templates', 'id-template.docx');
+const TEMPLATE_GRADE11 = path.join(__dirname, 'templates', 'idtemp2.docx');
+
+function getTemplatePath(section) {
+  if (section && section.trim().startsWith('11 ')) return TEMPLATE_GRADE11;
+  return TEMPLATE_DEFAULT;
+}
 
 function getStrandFromSection(section) {
   if (!section) return 'ACADEMIC';
@@ -134,8 +140,9 @@ function replacePlaceholdersInXml(documentXml, replacements) {
   return parts.join('');
 }
 
-function generateIDCardDocx(student, photoBuffer) {
-  const templateBuf = fs.readFileSync(TEMPLATE_PATH);
+function generateIDCardDocx(student, photoBuffer, templatePath) {
+  const tpl = templatePath || getTemplatePath(student.section);
+  const templateBuf = fs.readFileSync(tpl);
   const zip = new PizZip(templateBuf);
 
   const mi = student.middleName ? student.middleName.charAt(0) + '.' : '';
