@@ -499,7 +499,7 @@ async function checkBackgroundWhiteness(video, faceBox) {
     // Camera-specific thresholds
     const CAM_BRIGHTNESS = 180;
     const CAM_COLOR_TOLERANCE = 40;
-    const CAM_WHITE_PCT_REQUIRED = 60;
+    const CAM_WHITE_PCT_REQUIRED = 75;
 
     // Sample edges only
     const marginX = Math.round(w * 0.10);
