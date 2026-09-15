@@ -30,7 +30,7 @@
 
             <p class="landing-agreement">By clicking Proceed, you confirm that you have read and understood these guidelines and agree to the processing of your information for legitimate school purposes.</p>
 
-            <button id="proceedBtn" class="btn-proceed">PROCEED</button>
+            <button class="btn-proceed" onclick="document.getElementById('landingPage').classList.add('hidden');document.getElementById('lrnPage').classList.remove('hidden');document.getElementById('lrnVerify').focus();">PROCEED</button>
         </div>
     </div>
 
@@ -41,13 +41,13 @@
             <p>Please enter your 12-digit LRN to proceed. This will be used to verify your identity and link your records.</p>
 
             <div class="lrn-input-group">
-                <input type="text" id="lrnVerify" class="lrn-input" maxlength="12" placeholder="e.g. 123456789012" autocomplete="off">
+                <input type="text" id="lrnVerify" class="lrn-input" maxlength="12" placeholder="e.g. 123456789012" autocomplete="off" oninput="this.value=this.value.replace(/[^0-9]/g,'');document.getElementById('lrnError').classList.add('hidden');">
                 <span id="lrnError" class="lrn-error hidden">LRN must be exactly 12 digits</span>
             </div>
 
             <div class="lrn-actions">
-                <button id="lrnBackBtn" class="btn-back">Back</button>
-                <button id="lrnSubmitBtn" class="btn-proceed">Continue</button>
+                <button class="btn-back" onclick="document.getElementById('lrnPage').classList.add('hidden');document.getElementById('landingPage').classList.remove('hidden');">Back</button>
+                <button class="btn-proceed" onclick="var v=document.getElementById('lrnVerify').value.trim();if(!/^\d{12}$/.test(v)){document.getElementById('lrnError').classList.remove('hidden');return;}document.getElementById('lrnPage').classList.add('hidden');document.getElementById('mainForm').classList.remove('hidden');document.getElementById('lrn').value=v;">Continue</button>
             </div>
         </div>
     </div>
