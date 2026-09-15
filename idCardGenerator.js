@@ -32,9 +32,16 @@ function escapeXml(str) {
  * All positioning, sizing, and formatting stays intact.
  */
 function insertPhoto(zip, documentXml, photoBuffer) {
-  const photoPlaceholder = 'word/media/image1.jpeg';
+  // Find the photo placeholder — try both .jpeg and .png
+  let photoPlaceholder = null;
+  for (const name of ['word/media/image1.jpeg', 'word/media/image1.png']) {
+    if (zip.file(name)) {
+      photoPlaceholder = name;
+      break;
+    }
+  }
   
-  if (zip.file(photoPlaceholder)) {
+  if (photoPlaceholder) {
     zip.file(photoPlaceholder, photoBuffer);
     console.log(`Replaced ${photoPlaceholder} with student photo (${photoBuffer.length} bytes)`);
   } else {
