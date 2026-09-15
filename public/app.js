@@ -920,15 +920,6 @@ async function processCapturedImage(source) {
         }
     }
 
-    // White background check
-    lastWhiteness = null;
-    if (REQUIRE_WHITE_BG) {
-        const bgResult = await checkWhiteness(source, faceRegion);
-        lastWhiteness = bgResult;
-        const passed = bgResult.whitePct >= 80;
-        console.log('[PIPELINE] White bg:', passed ? 'PASS' : 'FAIL', bgResult.whitePct.toFixed(1) + '% white');
-    }
-
     capturedPhotoData = cropToSquare(source, faceRegion, srcW, srcH);
     closeCameraModal();
     showPreviewModal();
@@ -988,37 +979,18 @@ function showPreviewModal() {
 
     const approveBtn = document.getElementById('approveBtn');
     const bgNote = document.getElementById('bgNote');
-    const bgFails = REQUIRE_WHITE_BG && lastWhiteness && lastWhiteness.whitePct < 80;
-    console.log('[PREVIEW] lastWhiteness:', lastWhiteness, 'bgFails:', bgFails);
-
-    if (bgFails) {
-        console.log('[PREVIEW] Disabling approve button — bg too dark');
-        approveBtn.setAttribute('disabled', 'disabled');
-        approveBtn.textContent = '✕ Background not white';
-        approveBtn.style.opacity = '0.4';
-        approveBtn.style.pointerEvents = 'none';
-        if (bgNote) {
-            bgNote.textContent = 'White background required (' + Math.round(lastWhiteness.whitePct) + '% white, need 80%)';
-            bgNote.classList.remove('hidden');
-        }
-    } else {
-        console.log('[PREVIEW] Enabling approve button');
-        approveBtn.removeAttribute('disabled');
-        approveBtn.textContent = '✓ Use Photo';
-        approveBtn.style.opacity = '1';
-        approveBtn.style.pointerEvents = 'auto';
-        if (bgNote) {
-            bgNote.textContent = '';
-            bgNote.classList.add('hidden');
-        }
+    console.log('[PREVIEW] Enabling approve button');
+    approveBtn.removeAttribute('disabled');
+    approveBtn.textContent = '✓ Use Photo';
+    approveBtn.style.opacity = '1';
+    approveBtn.style.pointerEvents = 'auto';
+    if (bgNote) {
+        bgNote.textContent = '';
+        bgNote.classList.add('hidden');
     }
 }
 
 function approvePhoto() {
-    if (REQUIRE_WHITE_BG && lastWhiteness && lastWhiteness.whitePct < 80) {
-        showStatus('White background required', 'info');
-        return;
-    }
     selectedFile = dataURLtoFile(capturedPhotoData, 'photo.jpg');
     
     const preview = document.getElementById('photoPreview');
