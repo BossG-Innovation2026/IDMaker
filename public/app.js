@@ -1,4 +1,4 @@
-console.log('[APP] v99 — white bg button-disable active');
+console.log('[APP] v100 — landing + LRN flow');
 const API_URL = '';
 let selectedFile = null;
 let selectedLRN = null;
@@ -67,11 +67,11 @@ function validateLRN() {
 }
 
 // Load on page load
-document.addEventListener('DOMContentLoaded', async () => {
-    await loadModels();
-    await loadClasses();
+document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     restoreFormData();
+    loadModels();
+    loadClasses();
 });
 
 async function loadModels() {
