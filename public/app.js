@@ -1190,6 +1190,9 @@ function showQueueBar(position) {
         text.textContent = `Position ${position} in queue — please do not close this window`;
         bar.classList.remove('hidden');
     }
+    // Disable submit button while in queue
+    const submitBtn = document.querySelector('#studentForm button[type="submit"]');
+    if (submitBtn) submitBtn.setAttribute('disabled', 'disabled');
     window.__queueActive = true;
     window.addEventListener('beforeunload', window.__queueWarnHandler = (e) => {
         if (window.__queueActive) {
@@ -1202,6 +1205,9 @@ function showQueueBar(position) {
 function hideQueueBar() {
     const bar = document.getElementById('queueBar');
     if (bar) bar.classList.add('hidden');
+    // Re-enable submit button
+    const submitBtn = document.querySelector('#studentForm button[type="submit"]');
+    if (submitBtn) submitBtn.removeAttribute('disabled');
     window.__queueActive = false;
     if (window.__queueWarnHandler) {
         window.removeEventListener('beforeunload', window.__queueWarnHandler);

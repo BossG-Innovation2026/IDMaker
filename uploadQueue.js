@@ -180,21 +180,16 @@ async function processJob(job) {
       const results = {};
       let sectionFolderId = null;
 
-      // Upload photo + DOCX in parallel (P3 #11)
-      const uploadPromises = files.map(async (file) => {
+      // Upload files sequentially to avoid folder creation race condition
+      for (const file of files) {
         console.log(`[QUEUE] Uploading ${file.name} (${(file.buffer.length / 1024).toFixed(1)}KB) → ${student.section}/`);
         const result = await googleDrive.uploadStudentPhoto(
           file.buffer, file.name, file.mimeType, student.section
         );
         if (!result.success) throw new Error(result.error || 'upload failed');
         if (result.folderId) sectionFolderId = result.folderId;
+        results[file.key] = result;
         console.log(`[QUEUE] Uploaded ${file.name} → ${result.fileLink}`);
-        return { key: file.key, result };
-      });
-
-      const uploadResults = await Promise.all(uploadPromises);
-      for (const { key, result } of uploadResults) {
-        results[key] = result;
       }
 
       const fileLinks = {

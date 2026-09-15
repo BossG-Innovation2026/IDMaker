@@ -43,10 +43,20 @@ function escapeXml(str) {
     .replace(/"/g, '&quot;');
 }
 
-function insertPhoto(zip, documentXml, photoBuffer) {
+function insertPhoto(zip, documentXml, photoBuffer, templatePath) {
+  // Templates 2 & 3 (idtemp2, idtemp3): photo is on rId5 (image2.jpeg), rId4 is background
+  // Templates 1 & 4 (id-template, idtemp4): photo is on rId4
+  const isGrade11 = templatePath && (templatePath.includes('idtemp2') || templatePath.includes('idtemp3'));
+  const photoRid = isGrade11 ? 'rId5' : 'rId4';
+
+  // Replace the actual image file in the ZIP
   let photoPlaceholder = null;
-  for (const name of ['word/media/image1.jpeg', 'word/media/image1.png']) {
+  for (const name of ['word/media/image1.jpeg', 'word/media/image1.png', 'word/media/image2.jpeg']) {
     if (zip.file(name)) {
+      // For grade11 templates, only replace image2.jpeg (the photo area)
+      // For default templates, only replace image1.jpeg (the photo area)
+      if (isGrade11 && name.includes('image1')) continue;
+      if (!isGrade11 && name.includes('image2')) continue;
       photoPlaceholder = name;
       break;
     }
@@ -54,38 +64,19 @@ function insertPhoto(zip, documentXml, photoBuffer) {
 
   if (photoPlaceholder) {
     zip.file(photoPlaceholder, photoBuffer);
-    console.log(`Replaced ${photoPlaceholder} with student photo (${photoBuffer.length} bytes)`);
+    console.log(`Replaced ${photoPlaceholder} with student photo (${photoBuffer.length} bytes) [${photoRid}]`);
   } else {
     console.warn('Photo placeholder not found in template');
   }
 
-  const rid4Pos = documentXml.indexOf('r:embed="rId4"');
-  if (rid4Pos >= 0) {
-    const anchorStart = documentXml.lastIndexOf('<wp:anchor', rid4Pos);
-    const anchorEnd = documentXml.indexOf('</wp:anchor>', rid4Pos);
+  // Find the anchor block that uses the correct rId and remove noChangeAspect lock
+  const ridPos = documentXml.indexOf(`r:embed="${photoRid}"`);
+  if (ridPos >= 0) {
+    const anchorStart = documentXml.lastIndexOf('<wp:anchor', ridPos);
+    const anchorEnd = documentXml.indexOf('</wp:anchor>', ridPos);
     if (anchorStart >= 0 && anchorEnd > anchorStart) {
       let anchor = documentXml.substring(anchorStart, anchorEnd + 12);
-
-      // Remove noChangeAspect lock
       anchor = anchor.replace(/noChangeAspect="1"/g, 'noChangeAspect="0"');
-
-      // Find wp:extent INSIDE this anchor block
-      const extentMatch = anchor.match(/<wp:extent[^>]+cx="(\d+)"[^>]+cy="(\d+)"/);
-      if (extentMatch) {
-        const cx = parseInt(extentMatch[1]);
-        const cy = parseInt(extentMatch[2]);
-        if (cx !== cy) {
-          const square = Math.min(cx, cy);
-          // Replace wp:extent dimensions
-          anchor = anchor.replace(/(<wp:extent[^>]*cx=")\d+(")/, `$1${square}$2`);
-          anchor = anchor.replace(/(<wp:extent[^>]*cy=")\d+(")/, `$1${square}$2`);
-          // Replace a:ext dimensions only inside <a:xfrm> (graphic frame transform)
-          anchor = anchor.replace(/(<a:xfrm>[^]*?<a:ext[^>]*cx=")\d+(")/, `$1${square}$2`);
-          anchor = anchor.replace(/(<a:xfrm>[^]*?<a:ext[^>]*cy=")\d+(")/, `$1${square}$2`);
-          console.log(`Resized photo frame to square: ${square} EMU (${(square / 914400).toFixed(2)}")`);
-        }
-      }
-
       documentXml = documentXml.substring(0, anchorStart) + anchor + documentXml.substring(anchorEnd + 12);
     }
   }
@@ -204,7 +195,7 @@ function generateIDCardDocx(student, photoBuffer, templatePath) {
   documentXml = replacePlaceholdersInXml(documentXml, replacements);
 
   if (photoBuffer) {
-    documentXml = insertPhoto(zip, documentXml, photoBuffer);
+    documentXml = insertPhoto(zip, documentXml, photoBuffer, tpl);
   }
 
   zip.file('word/document.xml', documentXml);

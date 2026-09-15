@@ -10,6 +10,7 @@ class GoogleDriveService {
         this.auth = null;
         this.drive = null;
         this.folderCache = {};
+        this.folderLocks = {};
         this.initialized = false;
     }
 
@@ -97,10 +98,24 @@ class GoogleDriveService {
 
         const cacheKey = `${parentId}/${folderName}`;
         
+        // Return cached ID if available
         if (this.folderCache[cacheKey]) {
             return this.folderCache[cacheKey];
         }
 
+        // If another call is already creating this folder, wait for it
+        if (this.folderLocks[cacheKey]) {
+            return this.folderLocks[cacheKey];
+        }
+
+        // Lock: store the Promise so concurrent callers await it
+        this.folderLocks[cacheKey] = this._doGetOrCreateFolder(folderName, parentId, cacheKey)
+            .finally(() => { delete this.folderLocks[cacheKey]; });
+
+        return this.folderLocks[cacheKey];
+    }
+
+    async _doGetOrCreateFolder(folderName, parentId, cacheKey) {
         try {
             // Search for existing folder
             const response = await this.drive.files.list({
