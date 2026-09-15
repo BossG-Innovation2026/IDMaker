@@ -1,4 +1,4 @@
-console.log('[APP] v100 — landing + LRN flow');
+console.log('[APP] v101 — landing + LRN flow');
 const API_URL = '';
 let selectedFile = null;
 let selectedLRN = null;
@@ -68,6 +68,14 @@ function validateLRN() {
 
 // Load on page load
 document.addEventListener('DOMContentLoaded', () => {
+    // Ensure landing page is shown, LRN and main form are hidden
+    const landing = document.getElementById('landingPage');
+    const lrnPage = document.getElementById('lrnPage');
+    const mainForm = document.getElementById('mainForm');
+    if (landing) landing.classList.remove('hidden');
+    if (lrnPage) lrnPage.classList.add('hidden');
+    if (mainForm) mainForm.classList.add('hidden');
+
     setupEventListeners();
     restoreFormData();
     loadModels();
