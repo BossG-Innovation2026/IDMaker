@@ -19,6 +19,8 @@ const QUEUE_FILE = path.join(__dirname, 'data', 'upload-queue.json');
 
 function persistQueue() {
   try {
+    const dir = path.dirname(QUEUE_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     const data = { queue, queuedIds: [...queuedIds] };
     fs.writeFileSync(QUEUE_FILE, JSON.stringify(data), 'utf8');
   } catch (e) {
