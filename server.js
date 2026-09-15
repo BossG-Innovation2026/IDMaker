@@ -272,7 +272,7 @@ app.post('/api/students/override', upload.single('photo'), async (req, res) => {
 
     function deleteFile(filePath, label) {
       try {
-        const fullPath = path.join(uploadsDir, filePath);
+        const fullPath = path.join(uploadsDir, path.basename(filePath));
         if (fs.existsSync(fullPath)) {
           fs.unlinkSync(fullPath);
           filesDeleted.push(label);
