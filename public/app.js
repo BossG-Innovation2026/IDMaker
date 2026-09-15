@@ -571,29 +571,8 @@ function capturePhoto() {
         return;
     }
     
-    if (window.ImageCapture) {
-        const track = video.srcObject.getVideoTracks()[0];
-        const imageCapture = new ImageCapture(track);
-        imageCapture.takePhoto()
-            .then(blob => {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    capturedPhotoData = reader.result;
-                    const img = new Image();
-                    img.onload = () => {
-                        detectAndCrop(img);
-                    };
-                    img.src = capturedPhotoData;
-                };
-                reader.readAsDataURL(blob);
-            })
-            .catch(err => {
-                console.error('ImageCapture failed, falling back to canvas:', err);
-                captureWithCanvas(video);
-            });
-    } else {
-        captureWithCanvas(video);
-    }
+    // Always use canvas path — reliable coordinate mapping
+    captureWithCanvas(video);
 }
 
 function captureWithCanvas(video) {
@@ -604,40 +583,110 @@ function captureWithCanvas(video) {
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     
-    const imageData = ctx.getImageData(0, 0, 10, 10).data;
-    let sum = 0;
-    for (let i = 0; i < imageData.length; i += 4) {
-        sum += imageData[i] + imageData[i+1] + imageData[i+2];
-    }
-    
-    if (sum < 10) {
-        setTimeout(() => captureWithCanvas(video), 200);
-        return;
-    }
-    
     capturedPhotoData = canvas.toDataURL('image/jpeg', 0.92);
-    detectAndCrop(canvas);
+    processCapturedImage(canvas);
 }
 
-async function detectAndCrop(source) {
+async function processCapturedImage(source) {
     const srcW = source.naturalWidth || source.width;
     const srcH = source.naturalHeight || source.height;
-    console.log('[CROP] Source:', srcW, 'x', srcH);
+    console.log('[PIPELINE] Captured:', srcW, 'x', srcH);
 
-    capturedPhotoData = cropToSquare(source);
+    let faceBox = null;
+
+    if (modelsLoaded) {
+        // Downscale to 512px for reliable detection
+        const DETECT_SIZE = 512;
+        const detectCanvas = document.createElement('canvas');
+        const scale = DETECT_SIZE / Math.max(srcW, srcH);
+        detectCanvas.width = Math.round(srcW * scale);
+        detectCanvas.height = Math.round(srcH * scale);
+        const dCtx = detectCanvas.getContext('2d');
+        dCtx.drawImage(source, 0, 0, detectCanvas.width, detectCanvas.height);
+
+        console.log('[PIPELINE] Detection on:', detectCanvas.width, 'x', detectCanvas.height, 'scale:', scale);
+
+        try {
+            const detections = await faceapi
+                .detectAllFaces(detectCanvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.4 }));
+
+            console.log('[PIPELINE] Faces found:', detections.length);
+
+            if (detections.length > 0) {
+                const det = detections.reduce((a, b) =>
+                    a.detection.box.area > b.detection.box.area ? a : b
+                );
+                const box = det.detection.box;
+
+                // Map coordinates back to original image space
+                faceBox = {
+                    x: box.x / scale,
+                    y: box.y / scale,
+                    width: box.width / scale,
+                    height: box.height / scale
+                };
+
+                console.log('[PIPELINE] Face (original coords):', 
+                    'x=' + Math.round(faceBox.x),
+                    'y=' + Math.round(faceBox.y),
+                    'w=' + Math.round(faceBox.width),
+                    'h=' + Math.round(faceBox.height));
+            }
+        } catch (err) {
+            console.warn('[PIPELINE] Detection failed:', err);
+        }
+    } else {
+        console.log('[PIPELINE] Models not loaded');
+    }
+
+    capturedPhotoData = cropToSquare(source, faceBox, srcW, srcH);
     closeCameraModal();
     showPreviewModal();
 }
 
-function cropToSquare(source) {
-    const w = source.naturalWidth || source.width;
-    const h = source.naturalHeight || source.height;
+function cropToSquare(source, faceBox, srcW, srcH) {
+    let cropSize, cx, cy;
 
-    const cropSize = Math.min(w, h);
-    const sx = Math.round((w - cropSize) / 2);
-    const sy = Math.round((h - cropSize) / 2);
+    if (faceBox) {
+        // Face = 90% of square height
+        // faceBox.height should fill 90% of cropSize
+        cropSize = faceBox.height / 0.9;
 
-    console.log('[CROP] Center crop:', sx, sy, cropSize, 'x', cropSize, '-> 600x600');
+        // Ensure crop doesn't exceed image bounds
+        cropSize = Math.min(cropSize, srcW, srcH);
+
+        // Center crop on face
+        cx = faceBox.x + faceBox.width / 2;
+        cy = faceBox.y + faceBox.height / 2;
+
+        console.log('[CROP] Face center:', Math.round(cx), Math.round(cy), 'cropSize:', Math.round(cropSize));
+
+        // Clamp to image bounds
+        let sx = Math.round(cx - cropSize / 2);
+        let sy = Math.round(cy - cropSize / 2);
+        if (sx < 0) sx = 0;
+        if (sy < 0) sy = 0;
+        if (sx + cropSize > srcW) sx = srcW - cropSize;
+        if (sy + cropSize > srcH) sy = srcH - cropSize;
+        sx = Math.max(0, sx);
+        sy = Math.max(0, sy);
+
+        console.log('[CROP] Draw from:', sx, sy, Math.round(cropSize), '-> 600x600');
+
+        const out = document.createElement('canvas');
+        out.width = 600;
+        out.height = 600;
+        const ctx = out.getContext('2d');
+        ctx.drawImage(source, sx, sy, cropSize, cropSize, 0, 0, 600, 600);
+        return out.toDataURL('image/jpeg', 0.92);
+    }
+
+    // Fallback: center crop (no face detected)
+    cropSize = Math.min(srcW, srcH);
+    const sx = Math.round((srcW - cropSize) / 2);
+    const sy = Math.round((srcH - cropSize) / 2);
+
+    console.log('[CROP] No face — center crop:', sx, sy, Math.round(cropSize));
 
     const out = document.createElement('canvas');
     out.width = 600;
