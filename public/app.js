@@ -373,7 +373,7 @@ function startFaceDetection() {
         
         const detections = await faceapi
             .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ 
-                inputSize: 320,
+                inputSize: 640,
                 scoreThreshold: 0.5
             }))
             .withFaceLandmarks(true);
@@ -624,7 +624,7 @@ async function detectAndCrop(source) {
     if (modelsLoaded) {
         try {
             const detections = await faceapi
-                .detectAllFaces(source, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }));
+                .detectAllFaces(source, new faceapi.TinyFaceDetectorOptions({ inputSize: 640, scoreThreshold: 0.5 }));
             if (detections.length > 0) {
                 const detection = detections.reduce((prev, current) =>
                     (prev.detection.box.area > current.detection.box.area) ? prev : current
@@ -650,7 +650,8 @@ function cropToSquare(source, faceBox) {
         const faceCX = faceBox.x + faceBox.width / 2;
         const faceCY = faceBox.y + faceBox.height / 2;
         const faceDim = Math.max(faceBox.width, faceBox.height);
-        cropSize = faceDim / 0.9 * 0.8;
+        // Crop 10% larger than face so face fills ~90% of the square
+        cropSize = faceDim * 1.1;
         cx = faceCX;
         cy = faceCY;
     } else {
@@ -659,15 +660,20 @@ function cropToSquare(source, faceBox) {
         cy = h / 2;
     }
 
+    // Clamp crop to image bounds — never exceed source dimensions
+    cropSize = Math.min(cropSize, w, h);
+
     let sx = Math.round(cx - cropSize / 2);
     let sy = Math.round(cy - cropSize / 2);
 
+    // Clamp so crop stays within the image
     if (sx < 0) sx = 0;
     if (sy < 0) sy = 0;
     if (sx + cropSize > w) sx = w - cropSize;
     if (sy + cropSize > h) sy = h - cropSize;
-    if (sx < 0) sx = 0;
-    if (sy < 0) sy = 0;
+    // Final safety: ensure non-negative
+    sx = Math.max(0, sx);
+    sy = Math.max(0, sy);
 
     const out = document.createElement('canvas');
     const size = 600;
