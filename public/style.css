@@ -1268,3 +1268,65 @@ body {
     box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
     color: var(--primary-dark);
 }
+
+/* LRN Input Page */
+.lrn-input-group {
+    margin: 20px 0;
+    text-align: center;
+}
+
+.lrn-input {
+    width: 100%;
+    max-width: 280px;
+    padding: 14px 20px;
+    font-size: 1.2rem;
+    letter-spacing: 3px;
+    text-align: center;
+    border: none;
+    border-radius: 12px;
+    background: var(--bg-color);
+    color: var(--text);
+    font-weight: 600;
+    box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
+    outline: none;
+}
+
+.lrn-input::placeholder {
+    letter-spacing: 1px;
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: var(--text-light);
+    opacity: 0.6;
+}
+
+.lrn-error {
+    display: block;
+    margin-top: 10px;
+    font-size: 0.78rem;
+    color: #e53e3e;
+    font-weight: 600;
+}
+
+.lrn-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    margin-top: 10px;
+}
+
+.btn-back {
+    background: var(--bg-color);
+    border: none;
+    border-radius: 12px;
+    padding: 14px 30px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-light);
+    cursor: pointer;
+    box-shadow: 6px 6px 12px var(--shadow-dark), -6px -6px 12px var(--shadow-light);
+    transition: all 0.2s ease;
+}
+
+.btn-back:active {
+    box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
+}

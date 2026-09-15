@@ -1,6 +1,7 @@
 console.log('[APP] v99 — white bg button-disable active');
 const API_URL = '';
 let selectedFile = null;
+let selectedLRN = null;
 let videoStream = null;
 let faceDetectionInterval = null;
 let modelsLoaded = false;
@@ -48,6 +49,23 @@ const locationData = {
     'Arayat': { province: 'Pampanga', zipcode: '2012' }
 };
 
+function validateLRN() {
+    const lrn = document.getElementById('lrnVerify').value.trim();
+    const errorEl = document.getElementById('lrnError');
+    if (!/^\d{12}$/.test(lrn)) {
+        errorEl.classList.remove('hidden');
+        document.getElementById('lrnVerify').focus();
+        return;
+    }
+    // Store LRN and proceed
+    selectedLRN = lrn;
+    document.getElementById('lrnPage').classList.add('hidden');
+    document.getElementById('mainForm').classList.remove('hidden');
+    // Pre-fill LRN field
+    const lrnField = document.getElementById('lrn');
+    if (lrnField) lrnField.value = lrn;
+}
+
 // Load on page load
 document.addEventListener('DOMContentLoaded', async () => {
     await loadModels();
@@ -91,7 +109,32 @@ function setupEventListeners() {
     if (proceedBtn) {
         proceedBtn.addEventListener('click', () => {
             document.getElementById('landingPage').classList.add('hidden');
-            document.getElementById('mainForm').classList.remove('hidden');
+            document.getElementById('lrnPage').classList.remove('hidden');
+            document.getElementById('lrnVerify').focus();
+        });
+    }
+
+    // LRN verification page
+    const lrnSubmitBtn = document.getElementById('lrnSubmitBtn');
+    const lrnBackBtn = document.getElementById('lrnBackBtn');
+    const lrnVerify = document.getElementById('lrnVerify');
+
+    if (lrnSubmitBtn) {
+        lrnSubmitBtn.addEventListener('click', validateLRN);
+    }
+    if (lrnBackBtn) {
+        lrnBackBtn.addEventListener('click', () => {
+            document.getElementById('lrnPage').classList.add('hidden');
+            document.getElementById('landingPage').classList.remove('hidden');
+        });
+    }
+    if (lrnVerify) {
+        lrnVerify.addEventListener('input', (e) => {
+            e.target.value = e.target.value.replace(/[^0-9]/g, '');
+            document.getElementById('lrnError').classList.add('hidden');
+        });
+        lrnVerify.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') validateLRN();
         });
     }
 

@@ -34,6 +34,24 @@
         </div>
     </div>
 
+    <div id="lrnPage" class="landing-page hidden">
+        <div class="landing-card">
+            <h1>2026 CSHS ID</h1>
+            <h2>Enter Your Learner Reference Number</h2>
+            <p>Please enter your 12-digit LRN to proceed. This will be used to verify your identity and link your records.</p>
+
+            <div class="lrn-input-group">
+                <input type="text" id="lrnVerify" class="lrn-input" maxlength="12" placeholder="e.g. 123456789012" autocomplete="off">
+                <span id="lrnError" class="lrn-error hidden">LRN must be exactly 12 digits</span>
+            </div>
+
+            <div class="lrn-actions">
+                <button id="lrnBackBtn" class="btn-back">Back</button>
+                <button id="lrnSubmitBtn" class="btn-proceed">Continue</button>
+            </div>
+        </div>
+    </div>
+
     <div class="container hidden" id="mainForm">
         <div class="card">
             <div class="header">
