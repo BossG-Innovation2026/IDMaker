@@ -559,7 +559,7 @@ async function checkWhiteness(source, faceRegion) {
 // ============================================================
 // UPLOAD-SPECIFIC WHITE BACKGROUND DETECTION
 // ============================================================
-const WHITE_THRESHOLD = 185;
+const WHITE_THRESHOLD = 210;
 const COLOR_TOLERANCE = 35;
 const REQUIRED_WHITE_PERCENT = 80;
 const WHITE_DETECTION_DEBUG = false;
