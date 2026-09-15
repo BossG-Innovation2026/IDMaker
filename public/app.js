@@ -1164,8 +1164,9 @@ async function confirmOverride() {
             saveFormData();
             const queueId = result.queue?.queueId;
             const position = result.queue?.position || 0;
+            hideLoading();
             if (queueId) {
-                showLoading(`Position ${position} in queue...`);
+                showQueueBar(position);
                 pollDOCXQueue(queueId, result.student);
             } else {
                 finalizeSubmission(result.student);
@@ -1182,6 +1183,31 @@ async function confirmOverride() {
     pendingOverrideData = null;
 }
 
+function showQueueBar(position) {
+    const bar = document.getElementById('queueBar');
+    const text = document.getElementById('queueBarText');
+    if (bar && text) {
+        text.textContent = `Position ${position} in queue — please do not close this window`;
+        bar.classList.remove('hidden');
+    }
+    window.__queueActive = true;
+    window.addEventListener('beforeunload', window.__queueWarnHandler = (e) => {
+        if (window.__queueActive) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+}
+
+function hideQueueBar() {
+    const bar = document.getElementById('queueBar');
+    if (bar) bar.classList.add('hidden');
+    window.__queueActive = false;
+    if (window.__queueWarnHandler) {
+        window.removeEventListener('beforeunload', window.__queueWarnHandler);
+    }
+}
+
 async function pollDOCXQueue(queueId, student, attempt = 0) {
     const maxAttempts = 60;
     try {
@@ -1189,27 +1215,30 @@ async function pollDOCXQueue(queueId, student, attempt = 0) {
         const data = await res.json();
 
         if (data.status === 'done') {
+            hideQueueBar();
             finalizeSubmission(student);
             return;
         }
         if (data.status === 'error') {
-            hideLoading();
+            hideQueueBar();
             showStatus('ID card generation failed. Please try again.', 'info');
             return;
         }
+        const bar = document.getElementById('queueBar');
+        const text = document.getElementById('queueBarText');
         if (data.status === 'generating') {
-            showLoading(`Generating ID card... (${data.activeCount}/${data.maxConcurrent} slots)`);
+            if (text) text.textContent = `Generating ID card... (${data.activeCount}/${data.maxConcurrent} slots) — please do not close this window`;
         } else if (data.position > 0) {
-            showLoading(`Position ${data.position} in queue...`);
+            if (text) text.textContent = `Position ${data.position} in queue — please do not close this window`;
         }
         if (attempt >= maxAttempts) {
-            hideLoading();
+            hideQueueBar();
             showStatus('Timed out waiting for ID card generation.', 'info');
             return;
         }
     } catch (error) {
         if (attempt >= maxAttempts) {
-            hideLoading();
+            hideQueueBar();
             showStatus('Could not check queue status.', 'info');
             return;
         }
@@ -1219,6 +1248,7 @@ async function pollDOCXQueue(queueId, student, attempt = 0) {
 
 function finalizeSubmission(student) {
     currentStudentData = student;
+    hideQueueBar();
     showStatus('ID generated successfully!', 'success');
     updateIDPreview(student);
     document.getElementById('idPreview').classList.remove('hidden');
@@ -1257,8 +1287,9 @@ async function submitNewStudent() {
             saveFormData();
             const queueId = result.queue?.queueId;
             const position = result.queue?.position || 0;
+            hideLoading();
             if (queueId) {
-                showLoading(`Position ${position} in queue...`);
+                showQueueBar(position);
                 pollDOCXQueue(queueId, result.student);
             } else {
                 finalizeSubmission(result.student);
