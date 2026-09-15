@@ -425,8 +425,8 @@ function startFaceDetection() {
         const brightness = await checkBrightness(video, box);
         const isGoodBrightness = brightness > 40 && brightness < 220;
         
-        const bgWhiteness = await checkBackgroundWhiteness(video, box);
-        const isWhiteBg = bgWhiteness >= 80;
+        const bgResult = await checkBackgroundWhiteness(video, box);
+        const isWhiteBg = bgResult.passed;
         const whiteBgOK = REQUIRE_WHITE_BG ? isWhiteBg : true;
         
         ctx.strokeStyle = isCentered && isGoodSize && whiteBgOK && isStraight ? '#48bb78' : '#dd6b20';
@@ -492,8 +492,61 @@ async function checkBackgroundWhiteness(video, faceBox) {
     canvas.width = w;
     canvas.height = h;
     ctx.drawImage(video, 0, 0, w, h);
-    const result = await checkWhiteness(canvas, faceBox);
-    return result.whitePct;
+
+    const imageData = ctx.getImageData(0, 0, w, h);
+    const data = imageData.data;
+
+    // Camera-specific thresholds
+    const CAM_BRIGHTNESS = 190;
+    const CAM_WHITE_PCT_REQUIRED = 70;
+
+    // Sample edges only
+    const marginX = Math.round(w * 0.10);
+    const marginTop = Math.round(h * 0.15);
+    const marginBot = h - Math.round(h * 0.15);
+
+    let whiteCount = 0, totalCount = 0;
+
+    // Top band
+    for (let y = 0; y < marginTop; y += 3) {
+        for (let x = 0; x < w; x += 3) {
+            const idx = (y * w + x) * 4;
+            const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+            totalCount++;
+            if (brightness >= CAM_BRIGHTNESS) whiteCount++;
+        }
+    }
+    // Bottom band
+    for (let y = marginBot; y < h; y += 3) {
+        for (let x = 0; x < w; x += 3) {
+            const idx = (y * w + x) * 4;
+            const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+            totalCount++;
+            if (brightness >= CAM_BRIGHTNESS) whiteCount++;
+        }
+    }
+    // Left band
+    for (let y = marginTop; y < marginBot; y += 3) {
+        for (let x = 0; x < marginX; x += 3) {
+            const idx = (y * w + x) * 4;
+            const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+            totalCount++;
+            if (brightness >= CAM_BRIGHTNESS) whiteCount++;
+        }
+    }
+    // Right band
+    for (let y = marginTop; y < marginBot; y += 3) {
+        for (let x = w - marginX; x < w; x += 3) {
+            const idx = (y * w + x) * 4;
+            const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+            totalCount++;
+            if (brightness >= CAM_BRIGHTNESS) whiteCount++;
+        }
+    }
+
+    const whitePct = totalCount > 0 ? (whiteCount / totalCount) * 100 : 0;
+    console.log('[CAMERA BG] brightness>=', CAM_BRIGHTNESS, 'white%:', whitePct.toFixed(1), 'need:', CAM_WHITE_PCT_REQUIRED);
+    return { whitePct, passed: whitePct >= CAM_WHITE_PCT_REQUIRED };
 }
 
 async function checkWhiteness(source, faceRegion) {
