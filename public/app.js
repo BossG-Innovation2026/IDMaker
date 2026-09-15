@@ -86,6 +86,15 @@ async function loadClasses() {
 }
 
 function setupEventListeners() {
+    // Landing page proceed button
+    const proceedBtn = document.getElementById('proceedBtn');
+    if (proceedBtn) {
+        proceedBtn.addEventListener('click', () => {
+            document.getElementById('landingPage').classList.add('hidden');
+            document.getElementById('mainForm').classList.remove('hidden');
+        });
+    }
+
     document.getElementById('studentForm').addEventListener('submit', handleSubmit);
     document.getElementById('captureBtn').addEventListener('click', capturePhoto);
     
