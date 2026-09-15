@@ -498,6 +498,7 @@ async function checkBackgroundWhiteness(video, faceBox) {
 
     // Camera-specific thresholds
     const CAM_BRIGHTNESS = 190;
+    const CAM_COLOR_TOLERANCE = 35;
     const CAM_WHITE_PCT_REQUIRED = 70;
 
     // Sample edges only
@@ -507,40 +508,43 @@ async function checkBackgroundWhiteness(video, faceBox) {
 
     let whiteCount = 0, totalCount = 0;
 
+    function isWhitePixel(idx) {
+        const r = data[idx], g = data[idx + 1], b = data[idx + 2];
+        const brightness = (r + g + b) / 3;
+        const colorRange = Math.max(r, g, b) - Math.min(r, g, b);
+        return brightness >= CAM_BRIGHTNESS && colorRange <= CAM_COLOR_TOLERANCE;
+    }
+
     // Top band
     for (let y = 0; y < marginTop; y += 3) {
         for (let x = 0; x < w; x += 3) {
             const idx = (y * w + x) * 4;
-            const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
             totalCount++;
-            if (brightness >= CAM_BRIGHTNESS) whiteCount++;
+            if (isWhitePixel(idx)) whiteCount++;
         }
     }
     // Bottom band
     for (let y = marginBot; y < h; y += 3) {
         for (let x = 0; x < w; x += 3) {
             const idx = (y * w + x) * 4;
-            const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
             totalCount++;
-            if (brightness >= CAM_BRIGHTNESS) whiteCount++;
+            if (isWhitePixel(idx)) whiteCount++;
         }
     }
     // Left band
     for (let y = marginTop; y < marginBot; y += 3) {
         for (let x = 0; x < marginX; x += 3) {
             const idx = (y * w + x) * 4;
-            const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
             totalCount++;
-            if (brightness >= CAM_BRIGHTNESS) whiteCount++;
+            if (isWhitePixel(idx)) whiteCount++;
         }
     }
     // Right band
     for (let y = marginTop; y < marginBot; y += 3) {
         for (let x = w - marginX; x < w; x += 3) {
             const idx = (y * w + x) * 4;
-            const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
             totalCount++;
-            if (brightness >= CAM_BRIGHTNESS) whiteCount++;
+            if (isWhitePixel(idx)) whiteCount++;
         }
     }
 
