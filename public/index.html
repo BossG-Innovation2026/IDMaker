@@ -5,9 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>2026 CSHS ID - Data Collection Portal</title>
     <link rel="stylesheet" href="style.css">
+    <style>
+        .page { display: none !important; }
+        .landing-page.page.active { display: flex !important; }
+        .container.page.active { display: block !important; }
+    </style>
 </head>
 <body>
-    <div id="landingPage" class="landing-page">
+    <!-- PAGE 1: Welcome -->
+    <div id="landingPage" class="landing-page page active">
         <div class="landing-card">
             <h1>2026 CSHS ID</h1>
             <h2>Welcome to the Student Information & School ID Registration System.</h2>
@@ -30,29 +36,31 @@
 
             <p class="landing-agreement">By clicking Proceed, you confirm that you have read and understood these guidelines and agree to the processing of your information for legitimate school purposes.</p>
 
-            <button class="btn-proceed" onclick="document.getElementById('landingPage').classList.add('hidden');document.getElementById('lrnPage').classList.remove('hidden');document.getElementById('lrnVerify').focus();">PROCEED</button>
+            <button class="btn-proceed" id="proceedBtn">PROCEED</button>
         </div>
     </div>
 
-    <div id="lrnPage" class="landing-page hidden">
+    <!-- PAGE 2: LRN Entry -->
+    <div id="lrnPage" class="landing-page page">
         <div class="landing-card">
             <h1>2026 CSHS ID</h1>
             <h2>Enter Your Learner Reference Number</h2>
             <p>Please enter your 12-digit LRN to proceed. This will be used to verify your identity and link your records.</p>
 
             <div class="lrn-input-group">
-                <input type="text" id="lrnVerify" class="lrn-input" maxlength="12" placeholder="e.g. 123456789012" autocomplete="off" oninput="this.value=this.value.replace(/[^0-9]/g,'');document.getElementById('lrnError').classList.add('hidden');">
-                <span id="lrnError" class="lrn-error hidden">LRN must be exactly 12 digits</span>
+                <input type="text" id="lrnVerify" class="lrn-input" maxlength="12" placeholder="e.g. 123456789012" autocomplete="off">
+                <span id="lrnError" class="lrn-error" style="display:none">LRN must be exactly 12 digits</span>
             </div>
 
             <div class="lrn-actions">
-                <button class="btn-back" onclick="document.getElementById('lrnPage').classList.add('hidden');document.getElementById('landingPage').classList.remove('hidden');">Back</button>
-                <button class="btn-proceed" onclick="var v=document.getElementById('lrnVerify').value.trim();if(!/^\d{12}$/.test(v)){document.getElementById('lrnError').classList.remove('hidden');return;}document.getElementById('lrnPage').classList.add('hidden');document.getElementById('mainForm').classList.remove('hidden');document.getElementById('lrn').value=v;">Continue</button>
+                <button class="btn-back" id="lrnBackBtn">Back</button>
+                <button class="btn-proceed" id="lrnContinueBtn">Continue</button>
             </div>
         </div>
     </div>
 
-    <div class="container hidden" id="mainForm">
+    <!-- PAGE 3: Main Data Entry Form -->
+    <div id="mainForm" class="container page">
         <div class="card">
             <div class="header">
                 <h1>2026 CSHS ID</h1>
@@ -232,11 +240,9 @@
             <div class="camera-container">
                 <video id="cameraPreview" autoplay playsinline></video>
                 <canvas id="faceCanvas"></canvas>
-                <!-- Face Guide Overlay -->
                 <div class="face-guide" id="faceGuide">
                     <div class="guide-oval" id="guideOval"></div>
                 </div>
-                <!-- Face Status -->
                 <div class="face-status" id="faceStatus">
                     <span class="status-icon">🔍</span>
                     <span class="status-text">Searching for face...</span>
@@ -268,7 +274,7 @@
         </div>
     </div>
 
-    <!-- Photo Preview Modal (Approve/Reject) -->
+    <!-- Photo Preview Modal -->
     <div id="previewModal" class="modal hidden">
         <div class="modal-content preview-content">
             <div class="modal-header">
@@ -357,7 +363,7 @@
         </div>
     </div>
 
-    <!-- Confirmation Preview Modal (Review before Generate) -->
+    <!-- Confirmation Preview Modal -->
     <div id="confirmModal" class="modal hidden">
         <div class="modal-content confirm-content">
             <div class="modal-header">
@@ -415,13 +421,56 @@
         </div>
     </div>
 
-    <!-- Hidden file input for fallback (DISABLED) -->
+    <!-- Hidden file input -->
     <input type="file" id="cameraInput" name="photo" accept="image/*" hidden>
 
-    <!-- face-api.js (vladmandic fork) for face detection -->
+    <!-- Page Navigation Script — runs FIRST, before anything else -->
+    <script>
+    (function() {
+        var pages = ['landingPage', 'lrnPage', 'mainForm'];
+        function showPage(id) {
+            pages.forEach(function(p) {
+                var el = document.getElementById(p);
+                if (el) { el.classList.remove('active'); el.classList.add('page'); }
+            });
+            var target = document.getElementById(id);
+            if (target) { target.classList.add('active'); target.classList.remove('page'); }
+        }
+        // Start on landing page
+        showPage('landingPage');
+
+        document.getElementById('proceedBtn').addEventListener('click', function() {
+            showPage('lrnPage');
+            document.getElementById('lrnVerify').focus();
+        });
+
+        document.getElementById('lrnBackBtn').addEventListener('click', function() {
+            showPage('landingPage');
+        });
+
+        document.getElementById('lrnContinueBtn').addEventListener('click', function() {
+            var v = document.getElementById('lrnVerify').value.trim();
+            if (!/^\d{12}$/.test(v)) {
+                document.getElementById('lrnError').style.display = 'block';
+                return;
+            }
+            document.getElementById('lrn').value = v;
+            showPage('mainForm');
+        });
+
+        document.getElementById('lrnVerify').addEventListener('input', function(e) {
+            e.target.value = e.target.value.replace(/[^0-9]/g, '');
+            document.getElementById('lrnError').style.display = 'none';
+        });
+        document.getElementById('lrnVerify').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') document.getElementById('lrnContinueBtn').click();
+        });
+    })();
+    </script>
+
+    <!-- External libs -->
     <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
-    <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="app.js?v=101&t=20260915"></script>
+    <script src="app.js?v=102"></script>
 </body>
 </html>
