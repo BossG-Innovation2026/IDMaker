@@ -9,7 +9,7 @@ const { v4: uuidv4 } = require('uuid');
 const googleDrive = require('./googleDrive');
 const store = require('./store');
 const uploadQueue = require('./uploadQueue');
-const { generateIDCardDocx } = require('./idCardGenerator');
+const docxQueue = require('./docxQueue');
 
 // Load env vars in development
 if (process.env.NODE_ENV !== 'production') {
@@ -96,32 +96,19 @@ app.get('/api/classes', (req, res) => {
   res.json(classes);
 });
 
-// Generate ID card (DOCX only)
-function generateIDCardFile(student, photoBuf) {
-  try {
-    const docxBuffer = generateIDCardDocx(student, photoBuf);
+// ── DOCX Queue endpoints ───────────────────────────────────────────
 
-    if (!docxBuffer || docxBuffer.length < 100) {
-      console.error('DOCX buffer is empty or too small:', docxBuffer ? docxBuffer.length : 0);
-      return { docxPath: null };
-    }
+app.get('/api/queue-status/:queueId', (req, res) => {
+  const status = docxQueue.getJobStatus(req.params.queueId);
+  if (!status) return res.status(404).json({ error: 'Job not found' });
+  res.json(status);
+});
 
-    if (docxBuffer[0] !== 0x50 || docxBuffer[1] !== 0x4B) {
-      console.error('DOCX buffer is not a valid ZIP/DOCX file');
-      return { docxPath: null };
-    }
+app.get('/api/queue-stats', (req, res) => {
+  res.json(docxQueue.getQueueStats());
+});
 
-    const uploadsDir = path.join(__dirname, 'uploads');
-    const docxPath = path.join(uploadsDir, `${student.id}_ID.docx`);
-
-    fs.writeFileSync(docxPath, docxBuffer);
-    console.log(`DOCX saved: ${docxPath} (${docxBuffer.length} bytes)`);
-    return { docxPath };
-  } catch (error) {
-    console.error('ID card generation failed:', error.message);
-    return { docxPath: null };
-  }
-}
+// ── Override endpoint ───────────────────────────────────────────────
 
 function present(student) {
   return {
@@ -192,19 +179,23 @@ app.post('/api/students/override', rateLimiter, upload.single('photo'), async (r
       updatedAt: new Date().toISOString()
     };
 
-    // Generate ID card files
-    try {
-      const photoBuf = fs.readFileSync(path.join(__dirname, 'uploads', student.photoPath));
-      const result = generateIDCardFile(student, photoBuf);
-      if (result.docxPath && fs.existsSync(result.docxPath)) {
-        student.idCardDocxPath = `uploads/${path.basename(result.docxPath)}`;
-      }
-    } catch (idCardError) {
-      console.error('[OVERRIDE] ID card generation error:', idCardError.message);
-    }
-
     // Save new student to store
     store.add(student);
+
+    // Enqueue DOCX generation (max 3 concurrent, returns position)
+    const photoBuf = fs.readFileSync(path.join(__dirname, 'uploads', student.photoPath));
+    const { queueId, position, promise } = docxQueue.enqueueDOCX(student, photoBuf);
+
+    // Background: wait for DOCX, then enqueue Drive upload
+    promise.then(result => {
+      if (result && result.docxPath) {
+        store.update(student.id, { idCardDocxPath: `uploads/${path.basename(result.docxPath)}` });
+      }
+      uploadQueue.enqueue(student.id, { photo: photoBuf, photoExt: path.extname(student.photoPath) || '.jpg' });
+    }).catch(err => {
+      console.error('[OVERRIDE] DOCX generation failed:', err.message);
+      store.update(student.id, { uploadStatus: 'failed', uploadError: err.message });
+    });
 
     // STEP 3: Delete old files and record
     const uploadsDir = path.join(__dirname, 'uploads');
@@ -234,20 +225,17 @@ app.post('/api/students/override', rateLimiter, upload.single('photo'), async (r
     store.remove(existing.id);
     console.log(`[OVERRIDE] Replaced ${existing.id} (${existing.firstName} ${existing.lastName}) → ${student.id} — files removed: ${filesDeleted.join(', ') || 'none'}`);
 
-    // Delete old Google Drive files and sheet row (non-blocking)
-    const googleDrive = require('./googleDrive');
+    // Delete old Google Drive files (non-blocking)
     const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID || '0ACktHqI8zSSCUk9PVA';
     googleDrive.deleteStudentDriveFiles(existing, folderId).catch(e =>
       console.error('[OVERRIDE] Warning: Drive file deletion failed:', e.message)
     );
 
-    // Enqueue upload for new student
-    uploadQueue.enqueue(student.id);
-
     res.status(202).json({
       success: true,
       message: 'Override complete. New student record created.',
       student: present(student),
+      queue: { queueId, position },
       override: {
         deletedId: existingId,
         deletedFiles: filesDeleted
@@ -325,29 +313,29 @@ app.post('/api/students', rateLimiter, upload.single('photo'), async (req, res) 
       updatedAt: new Date().toISOString()
     };
 
-    // Generate ID card on disk for background upload
-    try {
-      const photoBuf = fs.readFileSync(path.join(__dirname, 'uploads', student.photoPath));
-      const result = generateIDCardFile(student, photoBuf);
-      
-      if (result.docxPath && fs.existsSync(result.docxPath)) {
-        student.idCardDocxPath = `uploads/${path.basename(result.docxPath)}`;
-        console.log(`DOCX ready: ${student.idCardDocxPath}`);
-      }
-    } catch (idCardError) {
-      console.error('ID card generation failed:', idCardError.message);
-    }
-
     store.add(student);
-    // Pass prebuilt buffers to queue — skips re-reading from disk
-    const prebuiltFiles = { photo: photoBuf, photoExt: path.extname(student.photoPath) || '.jpg' };
-    uploadQueue.enqueue(student.id, prebuiltFiles);
 
-    // Respond immediately; uploads continue in the background
+    // Enqueue DOCX generation (max 3 concurrent, returns position)
+    const photoBuf = fs.readFileSync(path.join(__dirname, 'uploads', student.photoPath));
+    const { queueId, position, promise } = docxQueue.enqueueDOCX(student, photoBuf);
+
+    // Background: wait for DOCX, then enqueue Drive upload
+    promise.then(result => {
+      if (result && result.docxPath) {
+        store.update(student.id, { idCardDocxPath: `uploads/${path.basename(result.docxPath)}` });
+      }
+      uploadQueue.enqueue(student.id, { photo: photoBuf, photoExt: path.extname(student.photoPath) || '.jpg' });
+    }).catch(err => {
+      console.error('DOCX generation failed:', err.message);
+      store.update(student.id, { uploadStatus: 'failed', uploadError: err.message });
+    });
+
+    // Respond immediately with queue position
     res.status(202).json({
       success: true,
-      message: 'Student saved. Files are uploading to Google Drive in the background.',
-      student: present(student)
+      message: 'Student saved. ID card is being generated.',
+      student: present(student),
+      queue: { queueId, position }
     });
   } catch (error) {
     console.error('Error saving student:', error);

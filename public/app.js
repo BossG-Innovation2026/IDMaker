@@ -1160,15 +1160,16 @@ async function confirmOverride() {
         
         if (result.success) {
             currentStudentData = result.student;
-            showLoading('Uploading to Google Drive...');
             showStatus('Override complete! New record created.', 'success');
             saveFormData();
-            updateIDPreview(result.student);
-            document.getElementById('idPreview').classList.remove('hidden');
-            document.getElementById('downloadSection').classList.remove('hidden');
-            setDriveNote('Uploading to Google Drive…', 'pending');
-            pollUploadStatus(result.student.id);
-            hideLoading();
+            const queueId = result.queue?.queueId;
+            const position = result.queue?.position || 0;
+            if (queueId) {
+                showLoading(`Position ${position} in queue...`);
+                pollDOCXQueue(queueId, result.student);
+            } else {
+                finalizeSubmission(result.student);
+            }
         } else {
             hideLoading();
             showStatus(result.error || 'Override failed', 'info');
@@ -1181,8 +1182,54 @@ async function confirmOverride() {
     pendingOverrideData = null;
 }
 
+async function pollDOCXQueue(queueId, student, attempt = 0) {
+    const maxAttempts = 60;
+    try {
+        const res = await fetch(`${API_URL}/api/queue-status/${queueId}`);
+        const data = await res.json();
+
+        if (data.status === 'done') {
+            finalizeSubmission(student);
+            return;
+        }
+        if (data.status === 'error') {
+            hideLoading();
+            showStatus('ID card generation failed. Please try again.', 'info');
+            return;
+        }
+        if (data.status === 'generating') {
+            showLoading(`Generating ID card... (${data.activeCount}/${data.maxConcurrent} slots)`);
+        } else if (data.position > 0) {
+            showLoading(`Position ${data.position} in queue...`);
+        }
+        if (attempt >= maxAttempts) {
+            hideLoading();
+            showStatus('Timed out waiting for ID card generation.', 'info');
+            return;
+        }
+    } catch (error) {
+        if (attempt >= maxAttempts) {
+            hideLoading();
+            showStatus('Could not check queue status.', 'info');
+            return;
+        }
+    }
+    setTimeout(() => pollDOCXQueue(queueId, student, attempt + 1), 2000);
+}
+
+function finalizeSubmission(student) {
+    currentStudentData = student;
+    showStatus('ID generated successfully!', 'success');
+    updateIDPreview(student);
+    document.getElementById('idPreview').classList.remove('hidden');
+    document.getElementById('downloadSection').classList.remove('hidden');
+    setDriveNote('Uploading to Google Drive…', 'pending');
+    pollUploadStatus(student.id);
+    hideLoading();
+}
+
 async function submitNewStudent() {
-    showLoading('Generating ID card...');
+    showLoading('Submitting...');
     
     const formData = new FormData();
     formData.append('firstName', document.getElementById('firstName').value);
@@ -1207,15 +1254,15 @@ async function submitNewStudent() {
         
         if (result.success) {
             currentStudentData = result.student;
-            showLoading('Uploading to Google Drive...');
-            showStatus('ID generated successfully!', 'success');
             saveFormData();
-            updateIDPreview(result.student);
-            document.getElementById('idPreview').classList.remove('hidden');
-            document.getElementById('downloadSection').classList.remove('hidden');
-            setDriveNote('Uploading to Google Drive…', 'pending');
-            pollUploadStatus(result.student.id);
-            hideLoading();
+            const queueId = result.queue?.queueId;
+            const position = result.queue?.position || 0;
+            if (queueId) {
+                showLoading(`Position ${position} in queue...`);
+                pollDOCXQueue(queueId, result.student);
+            } else {
+                finalizeSubmission(result.student);
+            }
         } else if (response.status === 409 && result.duplicate) {
             hideLoading();
             const firstName = document.getElementById('firstName').value.trim();
