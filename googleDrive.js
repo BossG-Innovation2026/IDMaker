@@ -579,6 +579,7 @@ class GoogleDriveService {
         try {
             const store = require('./store');
             const allStudents = store.all();
+            const allOverrides = store.allOverrides();
 
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet('All Students');
@@ -599,19 +600,23 @@ class GoogleDriveService {
                 { header: 'Photo Link', key: 'photoLink', width: 25 },
                 { header: 'ID Card Link', key: 'idCardLink', width: 25 },
                 { header: 'Created', key: 'createdAt', width: 22 },
-                { header: 'Updated', key: 'updatedAt', width: 22 }
+                { header: 'Updated', key: 'updatedAt', width: 22 },
+                { header: 'Overridden', key: 'overridden', width: 20 }
             ];
 
             worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
             worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2C3E50' } };
 
-            allStudents.forEach((s, i) => {
+            let num = 1;
+
+            // Add overridden records first (they came before the active ones)
+            allOverrides.forEach((s) => {
                 const mi = s.middleName ? s.middleName.charAt(0) + '.' : '';
                 const photoLink = s.driveFiles?.photo?.fileLink || '';
                 const idCardLink = s.driveFiles?.idCard?.fileLink || '';
 
                 worksheet.addRow({
-                    num: i + 1,
+                    num: num++,
                     lrn: s.lrn,
                     lastName: s.lastName,
                     firstName: s.firstName,
@@ -626,7 +631,35 @@ class GoogleDriveService {
                     photoLink: photoLink,
                     idCardLink: idCardLink,
                     createdAt: s.createdAt ? new Date(s.createdAt).toLocaleString() : '',
-                    updatedAt: s.updatedAt ? new Date(s.updatedAt).toLocaleString() : ''
+                    updatedAt: s.updatedAt ? new Date(s.updatedAt).toLocaleString() : '',
+                    overridden: s.overriddenAt ? 'OVERRIDDEN (' + new Date(s.overriddenAt).toLocaleString() + ')' : 'OVERRIDDEN'
+                });
+            });
+
+            // Add active records
+            allStudents.forEach((s) => {
+                const mi = s.middleName ? s.middleName.charAt(0) + '.' : '';
+                const photoLink = s.driveFiles?.photo?.fileLink || '';
+                const idCardLink = s.driveFiles?.idCard?.fileLink || '';
+
+                worksheet.addRow({
+                    num: num++,
+                    lrn: s.lrn,
+                    lastName: s.lastName,
+                    firstName: s.firstName,
+                    mi: mi,
+                    sex: s.sex || '',
+                    section: s.section,
+                    birthday: s.birthday ? new Date(s.birthday).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '',
+                    address: s.address,
+                    parentName: s.parentName,
+                    contactNumber: s.contactNumber,
+                    uploadStatus: s.uploadStatus || '',
+                    photoLink: photoLink,
+                    idCardLink: idCardLink,
+                    createdAt: s.createdAt ? new Date(s.createdAt).toLocaleString() : '',
+                    updatedAt: s.updatedAt ? new Date(s.updatedAt).toLocaleString() : '',
+                    overridden: ''
                 });
             });
 

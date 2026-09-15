@@ -3,8 +3,10 @@ const path = require('path');
 
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'students.json');
+const OVERRIDES_FILE = path.join(DATA_DIR, 'overrides.json');
 
 let students = [];
+let overrides = [];
 let writeTimer = null;
 
 function load() {
@@ -19,6 +21,17 @@ function load() {
     console.error('Failed to load student store:', error.message);
     students = [];
   }
+  try {
+    if (fs.existsSync(OVERRIDES_FILE)) {
+      const raw = fs.readFileSync(OVERRIDES_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      overrides = Array.isArray(parsed) ? parsed : [];
+      console.log(`✓ Loaded ${overrides.length} override record(s) from disk`);
+    }
+  } catch (error) {
+    console.error('Failed to load overrides store:', error.message);
+    overrides = [];
+  }
 }
 
 function persist() {
@@ -31,6 +44,24 @@ function persist() {
       console.error('Failed to persist student store:', error.message);
     }
   }, 200);
+}
+
+function persistOverrides() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(OVERRIDES_FILE, JSON.stringify(overrides, null, 2));
+  } catch (error) {
+    console.error('Failed to persist overrides store:', error.message);
+  }
+}
+
+function logOverride(student) {
+  overrides.push(student);
+  persistOverrides();
+}
+
+function allOverrides() {
+  return overrides;
 }
 
 function all() {
@@ -108,4 +139,4 @@ function checkDuplicate(firstName, lastName, lrn, excludeId) {
 
 load();
 
-module.exports = { all, find, add, update, remove, findByLRN, findByName, checkDuplicate };
+module.exports = { all, find, add, update, remove, findByLRN, findByName, checkDuplicate, logOverride, allOverrides };

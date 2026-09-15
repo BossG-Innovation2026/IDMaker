@@ -335,6 +335,9 @@ app.post('/api/students/override', upload.single('photo'), async (req, res) => {
     if (existing.idCardDocxPath) deleteFile(existing.idCardDocxPath, 'DOCX');
     if (existing.idCardPath) deleteFile(existing.idCardPath, 'PDF');
 
+    // Log the old record as overridden BEFORE removing it
+    store.logOverride({ ...existing, overriddenAt: new Date().toISOString() });
+
     // Remove old record from store
     store.remove(existing.id);
     console.log(`[OVERRIDE] Replaced ${existing.id} (${existing.firstName} ${existing.lastName}) → ${student.id} — files removed: ${filesDeleted.join(', ') || 'none'}`);
