@@ -675,7 +675,7 @@ function cropToSquare(source, faceRegion, srcW, srcH) {
 
         // Center on the face region, shifted 10% up for more forehead
         cx = faceRegion.x + faceRegion.width / 2;
-        cy = faceRegion.y + faceRegion.height / 2 - cropSize * 0.10;
+        cy = faceRegion.y + faceRegion.height / 2 - cropSize * 0.05;
 
         let sx = Math.round(cx - cropSize / 2);
         let sy = Math.round(cy - cropSize / 2);
