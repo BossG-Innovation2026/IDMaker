@@ -178,7 +178,7 @@ function generateIDCardDocx(student, photoBuffer) {
     '{{CONTACT}}': student.contactNumber || '',
     '{{LRN}}': student.lrn || '',
     '{{SECTION}}': student.section || '',
-    '{{STUDENT_NO}}': student.studentNo || '',
+    '{{TIMESTAMP}}': student.createdAt ? new Date(student.createdAt).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
     '{{STRAND}}': getStrandFromSection(student.section)
   };
 

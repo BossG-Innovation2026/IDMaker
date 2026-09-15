@@ -7,7 +7,8 @@ const PARENT_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || '0ACktHqI8zSSCUk9
 
 const SHEET_HEADERS = [
     'Name', 'Section', 'LRN', 'Birthday', 'Address',
-    'Parent/Guardian', 'Contact', 'Photo Link', 'ID Card Link', 'Generated'
+    'Parent/Guardian', 'Contact', 'Photo Link', 'ID Card Link',
+    'Created Timestamp', 'Updated Timestamp'
 ];
 
 class GoogleDriveService {
@@ -292,12 +293,13 @@ class GoogleDriveService {
                 student.contactNumber,
                 fileLinks.photo || '',
                 fileLinks.idCard || '',
-                new Date().toLocaleString()
+                student.createdAt ? new Date(student.createdAt).toLocaleString() : new Date().toLocaleString(),
+                student.updatedAt ? new Date(student.updatedAt).toLocaleString() : ''
             ];
 
             await this.sheets.spreadsheets.values.append({
                 spreadsheetId,
-                range: 'Students!A:J',
+                range: 'Students!A:K',
                 valueInputOption: 'RAW',
                 insertDataOption: 'INSERT_ROWS',
                 resource: { values: [row] }
@@ -321,7 +323,6 @@ class GoogleDriveService {
 
             worksheet.columns = [
                 { header: '#', key: 'num', width: 5 },
-                { header: 'Student No', key: 'studentNo', width: 12 },
                 { header: 'LRN', key: 'lrn', width: 15 },
                 { header: 'Last Name', key: 'lastName', width: 18 },
                 { header: 'First Name', key: 'firstName', width: 18 },
@@ -333,7 +334,8 @@ class GoogleDriveService {
                 { header: 'Contact', key: 'contactNumber', width: 15 },
                 { header: 'Photo Link', key: 'photoLink', width: 25 },
                 { header: 'ID Card Link', key: 'idCardLink', width: 25 },
-                { header: 'Generated', key: 'createdAt', width: 22 }
+                { header: 'Created', key: 'createdAt', width: 22 },
+                { header: 'Updated', key: 'updatedAt', width: 22 }
             ];
 
             worksheet.getRow(1).font = { bold: true, size: 11 };
@@ -347,7 +349,6 @@ class GoogleDriveService {
                 
                 worksheet.addRow({
                     num: i + 1,
-                    studentNo: s.studentNo || '',
                     lrn: s.lrn,
                     lastName: s.lastName,
                     firstName: s.firstName,
@@ -359,7 +360,8 @@ class GoogleDriveService {
                     contactNumber: s.contactNumber,
                     photoLink: photoLink,
                     idCardLink: idCardLink,
-                    createdAt: new Date(s.createdAt).toLocaleString()
+                    createdAt: s.createdAt ? new Date(s.createdAt).toLocaleString() : '',
+                    updatedAt: s.updatedAt ? new Date(s.updatedAt).toLocaleString() : ''
                 });
             });
 

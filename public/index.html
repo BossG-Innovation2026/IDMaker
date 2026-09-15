@@ -247,6 +247,42 @@
         </div>
     </div>
 
+    <!-- Duplicate Warning Modal -->
+    <div id="duplicateModal" class="modal hidden">
+        <div class="modal-content dup-content">
+            <div class="modal-header dup-header">
+                <h2>⚠ DUPLICATE RECORD DETECTED</h2>
+            </div>
+            <div class="dup-body">
+                <div class="dup-section">
+                    <div class="dup-label">New Record</div>
+                    <div class="dup-detail"><strong>Surname:</strong> <span id="dupNewLast"></span></div>
+                    <div class="dup-detail"><strong>First Name:</strong> <span id="dupNewFirst"></span></div>
+                    <div class="dup-detail"><strong>LRN:</strong> <span id="dupNewLRN"></span></div>
+                </div>
+                <div class="dup-section">
+                    <div class="dup-label">Existing Record</div>
+                    <div class="dup-detail"><strong>Surname:</strong> <span id="dupOldLast"></span></div>
+                    <div class="dup-detail"><strong>First Name:</strong> <span id="dupOldFirst"></span></div>
+                    <div class="dup-detail"><strong>LRN:</strong> <span id="dupOldLRN"></span></div>
+                    <div class="dup-detail"><strong>Section:</strong> <span id="dupOldSection"></span></div>
+                </div>
+                <div class="dup-section dup-match">
+                    <div class="dup-label">Matched By</div>
+                    <div class="dup-detail" id="dupMatchName" style="display:none">☑ Surname + First Name</div>
+                    <div class="dup-detail" id="dupMatchLRN" style="display:none">☑ LRN</div>
+                </div>
+                <div class="dup-warning">
+                    ⚠ Overriding will delete the existing student's associated image, DOCX, Excel/Sheet record, and other student-specific files before creating the new record.
+                </div>
+            </div>
+            <div class="dup-actions">
+                <button type="button" class="btn-neu btn-secondary" onclick="cancelOverride()">CANCEL</button>
+                <button type="button" class="btn-neu btn-danger" onclick="confirmOverride()">OVERRIDE</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Background Rejection Modal -->
     <div id="rejectModal" class="modal hidden">
         <div class="modal-content reject-content">

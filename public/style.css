@@ -835,6 +835,85 @@ body {
 
 /* Confirmation Review Modal */
 /* Background Rejection Modal */
+/* Duplicate Warning Modal */
+.dup-content {
+    max-width: 420px;
+}
+
+.dup-header {
+    background: #e67e22;
+    border-radius: 16px 16px 0 0;
+}
+
+.dup-header h2 {
+    color: #fff;
+    font-size: 1rem;
+}
+
+.dup-body {
+    padding: 16px 20px;
+}
+
+.dup-section {
+    margin-bottom: 12px;
+    padding: 10px;
+    background: var(--bg-color);
+    border-radius: 10px;
+    box-shadow: inset 2px 2px 5px var(--shadow-dark),
+                inset -2px -2px 5px var(--shadow-light);
+}
+
+.dup-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-light);
+    margin-bottom: 6px;
+}
+
+.dup-detail {
+    font-size: 0.85rem;
+    color: var(--text);
+    margin: 2px 0;
+}
+
+.dup-match .dup-detail {
+    color: #e67e22;
+    font-weight: 600;
+}
+
+.dup-warning {
+    font-size: 0.8rem;
+    color: #e53e3e;
+    background: #fff5f5;
+    border: 1px solid #fed7d7;
+    border-radius: 8px;
+    padding: 10px;
+    margin-top: 10px;
+}
+
+.dup-actions {
+    display: flex;
+    gap: 12px;
+    padding: 0 20px 20px;
+}
+
+.dup-actions .btn-secondary {
+    flex: 1;
+    background: var(--bg-color);
+    color: var(--text);
+    box-shadow: 5px 5px 10px var(--shadow-dark),
+                -5px -5px 10px var(--shadow-light);
+}
+
+.dup-actions .btn-danger {
+    flex: 1;
+    background: #e53e3e;
+    color: #fff;
+    box-shadow: 5px 5px 10px var(--shadow-dark),
+                -5px -5px 10px var(--shadow-light);
+}
+
 .reject-content {
     max-width: 380px;
 }

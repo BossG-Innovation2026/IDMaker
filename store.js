@@ -61,6 +61,51 @@ function remove(id) {
   persist();
 }
 
+function normalizeStr(str) {
+  return (str || '').trim().toUpperCase();
+}
+
+function findByLRN(lrn) {
+  const normalized = (lrn || '').trim();
+  if (!normalized) return null;
+  return students.find(s => (s.lrn || '').trim() === normalized) || null;
+}
+
+function findByName(firstName, lastName) {
+  const fn = normalizeStr(firstName);
+  const ln = normalizeStr(lastName);
+  if (!fn || !ln) return null;
+  return students.find(s => normalizeStr(s.firstName) === fn && normalizeStr(s.lastName) === ln) || null;
+}
+
+function checkDuplicate(firstName, lastName, lrn, excludeId) {
+  const lrnMatch = findByLRN(lrn);
+  const nameMatch = findByName(firstName, lastName);
+
+  const matches = [];
+  let matchedByLRN = false;
+  let matchedByName = false;
+
+  if (lrnMatch && lrnMatch.id !== excludeId) {
+    matchedByLRN = true;
+    matches.push(lrnMatch);
+  }
+
+  if (nameMatch && nameMatch.id !== excludeId) {
+    matchedByName = true;
+    if (!matches.find(m => m.id === nameMatch.id)) {
+      matches.push(nameMatch);
+    }
+  }
+
+  return {
+    isDuplicate: matches.length > 0,
+    matchedByName,
+    matchedByLRN,
+    matches
+  };
+}
+
 load();
 
-module.exports = { all, find, add, update, remove };
+module.exports = { all, find, add, update, remove, findByLRN, findByName, checkDuplicate };

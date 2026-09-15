@@ -233,50 +233,117 @@ function present(student) {
   };
 }
 
-// Check for duplicate student (surname + firstname + section)
+// Check for duplicate student (LRN + surname + first name)
 app.get('/api/students/check-duplicate', (req, res) => {
-  const { firstName, lastName, section } = req.query;
-  if (!firstName || !lastName || !section) {
-    return res.json({ duplicate: false });
-  }
-  
-  const students = store.all();
-  const duplicate = students.find(s => 
-    s.section === section &&
-    s.lastName.toUpperCase() === lastName.toUpperCase() &&
-    s.firstName.toUpperCase() === firstName.toUpperCase()
-  );
-  
-  if (duplicate) {
-    res.json({ 
-      duplicate: true, 
-      existing: {
-        id: duplicate.id,
-        firstName: duplicate.firstName,
-        lastName: duplicate.lastName,
-        section: duplicate.section,
-        createdAt: duplicate.createdAt
-      }
-    });
-  } else {
-    res.json({ duplicate: false });
-  }
-});
-
-// Check LRN against master Google Sheets
-app.get('/api/students/check-lrn/:lrn', async (req, res) => {
-  const { lrn } = req.params;
-  if (!lrn || lrn.length < 5) {
+  const { firstName, lastName, lrn } = req.query;
+  if (!firstName && !lastName && !lrn) {
     return res.json({ isDuplicate: false });
   }
 
+  const result = store.checkDuplicate(firstName, lastName, lrn);
+  res.json(result);
+});
+
+// Override endpoint — delete old + create new atomically
+app.post('/api/students/override', upload.single('photo'), async (req, res) => {
   try {
-    const googleDrive = require('./googleDrive');
-    const result = await googleDrive.checkDuplicateLRN(lrn);
-    res.json(result);
+    const {
+      firstName, middleName, lastName, sex, birthday,
+      lrn, section, address, parentName, contactNumber, existingId
+    } = req.body;
+
+    if (!firstName || !lastName || !sex || !birthday || !lrn || !section || !address || !parentName || !contactNumber) {
+      return res.status(400).json({ error: 'All required fields must be filled' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'Photo is required' });
+    }
+
+    // STEP 1: Locate existing record
+    const existing = store.find(existingId);
+    if (!existing) {
+      return res.status(404).json({ error: 'Existing student record not found' });
+    }
+
+    // STEP 2: Delete old student-specific files
+    const uploadsDir = path.join(__dirname, 'uploads');
+    const filesDeleted = [];
+    const filesFailed = [];
+
+    function deleteFile(filePath, label) {
+      try {
+        const fullPath = path.join(uploadsDir, filePath);
+        if (fs.existsSync(fullPath)) {
+          fs.unlinkSync(fullPath);
+          filesDeleted.push(label);
+        }
+      } catch (e) {
+        filesFailed.push(label);
+        console.error(`Failed to delete ${label}:`, e.message);
+      }
+    }
+
+    if (existing.photoPath) deleteFile(existing.photoPath, 'photo');
+    if (existing.idCardDocxPath) deleteFile(existing.idCardDocxPath, 'DOCX');
+    if (existing.idCardPath) deleteFile(existing.idCardPath, 'PDF');
+
+    // If any critical file deletion failed, abort
+    if (filesFailed.length > 0) {
+      return res.status(500).json({
+        error: 'Override failed. The existing student record could not be completely removed. No new record was created.',
+        failedFiles: filesFailed
+      });
+    }
+
+    // STEP 3: Remove old record from store
+    store.remove(existing.id);
+    console.log(`[OVERRIDE] Deleted old record ${existing.id} (${existing.firstName} ${existing.lastName}) — files removed: ${filesDeleted.join(', ') || 'none'}`);
+
+    // STEP 4: Create new student record
+    const student = {
+      id: uuidv4(),
+      firstName, middleName: middleName || '', lastName, sex, birthday,
+      lrn, section, address, parentName, contactNumber,
+      photoPath: req.file.filename,
+      photoMime: req.file.mimetype,
+      uploadStatus: 'pending',
+      uploadError: null,
+      driveUploaded: false,
+      driveLink: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    // Generate ID card files
+    try {
+      const photoBuf = fs.readFileSync(path.join(__dirname, 'uploads', student.photoPath));
+      const result = generateIDCardFile(student, photoBuf);
+      if (result.docxPath && fs.existsSync(result.docxPath)) {
+        student.idCardDocxPath = `uploads/${path.basename(result.docxPath)}`;
+      }
+      if (result.pdfPath && fs.existsSync(result.pdfPath)) {
+        student.idCardPath = `uploads/${path.basename(result.pdfPath)}`;
+        student.idCardMime = 'application/pdf';
+      }
+    } catch (idCardError) {
+      console.error('ID card generation error during override:', idCardError);
+    }
+
+    store.add(student);
+    uploadQueue.enqueue(student.id);
+
+    res.status(202).json({
+      success: true,
+      message: 'Override complete. New student record created.',
+      student: present(student),
+      override: {
+        deletedId: existingId,
+        deletedFiles: filesDeleted
+      }
+    });
   } catch (error) {
-    console.error('LRN check error:', error.message);
-    res.json({ isDuplicate: false, error: error.message });
+    console.error('Override error:', error);
+    res.status(500).json({ error: 'Override failed: ' + error.message });
   }
 });
 
@@ -301,6 +368,25 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
       return res.status(400).json({ error: 'All required fields must be filled' });
     }
 
+    // Backend duplicate check — authoritative
+    const dupCheck = store.checkDuplicate(firstName, lastName, lrn);
+    if (dupCheck.isDuplicate) {
+      return res.status(409).json({
+        error: 'DUPLICATE',
+        duplicate: true,
+        matchedByName: dupCheck.matchedByName,
+        matchedByLRN: dupCheck.matchedByLRN,
+        existing: {
+          id: dupCheck.matches[0].id,
+          firstName: dupCheck.matches[0].firstName,
+          lastName: dupCheck.matches[0].lastName,
+          lrn: dupCheck.matches[0].lrn,
+          section: dupCheck.matches[0].section,
+          createdAt: dupCheck.matches[0].createdAt
+        }
+      });
+    }
+
     if (!req.file) {
       return res.status(400).json({ error: 'Photo is required' });
     }
@@ -323,7 +409,8 @@ app.post('/api/students', upload.single('photo'), async (req, res) => {
       uploadError: null,
       driveUploaded: false,
       driveLink: null,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
 
     // Generate ID card on disk for background upload

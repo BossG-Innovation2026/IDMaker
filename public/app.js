@@ -1105,72 +1105,111 @@ function closeConfirmModal() {
     document.getElementById('confirmModal').classList.add('hidden');
 }
 
+let pendingOverrideData = null;
+
 async function confirmAndGenerate() {
     closeConfirmModal();
     
     const firstName = document.getElementById('firstName').value.trim();
     const lastName  = document.getElementById('lastName').value.trim();
-    const section   = document.getElementById('classSelect').value;
+    const lrn      = document.getElementById('lrn').value.trim();
     
     showLoading('Checking for duplicates...');
     
     try {
-        const checkRes = await fetch(`${API_URL}/api/students/check-duplicate?firstName=${encodeURIComponent(firstName)}&lastName=${encodeURIComponent(lastName)}&section=${encodeURIComponent(section)}`);
+        const checkRes = await fetch(`${API_URL}/api/students/check-duplicate?firstName=${encodeURIComponent(firstName)}&lastName=${encodeURIComponent(lastName)}&lrn=${encodeURIComponent(lrn)}`);
         const checkData = await checkRes.json();
         
-        if (checkData.duplicate) {
+        if (checkData.isDuplicate) {
             hideLoading();
-            const confirmed = confirm(
-                `DUPLICATE WARNING!\n\n` +
-                `A student with name "${checkData.existing.lastName}, ${checkData.existing.firstName}" ` +
-                `already exists in ${checkData.existing.section}.\n` +
-                `Created: ${new Date(checkData.existing.createdAt).toLocaleString()}\n\n` +
-                `Do you want to OVERRIDE the existing entry?\n` +
-                `(The old entry will be deleted and replaced)`
-            );
-            
-            if (!confirmed) {
-                showStatus('Entry cancelled by user', 'info');
-                return;
-            }
-            
-            showLoading('Deleting old entry...');
-            await fetch(`${API_URL}/api/students/${checkData.existing.id}`, { method: 'DELETE' });
+            showDuplicateModal(checkData, firstName, lastName, lrn);
+            return;
         }
     } catch (err) {
         console.warn('Duplicate check failed, proceeding:', err);
     }
+    
+    await submitNewStudent();
+}
 
-    // Check LRN against master Google Sheets
-    const lrn = document.getElementById('lrn').value.trim();
-    if (lrn && lrn.length >= 5) {
-        try {
-            showLoading('Checking LRN in master records...');
-            const lrnRes = await fetch(`${API_URL}/api/students/check-lrn/${encodeURIComponent(lrn)}`);
-            const lrnData = await lrnRes.json();
+function showDuplicateModal(checkData, firstName, lastName, lrn) {
+    document.getElementById('dupNewLast').textContent = lastName;
+    document.getElementById('dupNewFirst').textContent = firstName;
+    document.getElementById('dupNewLRN').textContent = lrn;
 
-            if (lrnData.isDuplicate) {
-                hideLoading();
-                const match = lrnData.matches[0];
-                const confirmed = confirm(
-                    `LRN DUPLICATE FOUND!\n\n` +
-                    `LRN "${lrn}" already exists in the master spreadsheet.\n` +
-                    `Name: ${match.name}\n` +
-                    `Section: ${match.section}\n` +
-                    `Row: ${match.row}\n\n` +
-                    `Do you want to proceed anyway?`
-                );
+    const match = checkData.matches[0];
+    document.getElementById('dupOldLast').textContent = match.lastName;
+    document.getElementById('dupOldFirst').textContent = match.firstName;
+    document.getElementById('dupOldLRN').textContent = match.lrn;
+    document.getElementById('dupOldSection').textContent = match.section;
 
-                if (!confirmed) {
-                    showStatus('Entry cancelled — duplicate LRN', 'info');
-                    return;
-                }
-            }
-        } catch (err) {
-            console.warn('LRN check failed, proceeding:', err);
+    document.getElementById('dupMatchName').style.display = checkData.matchedByName ? 'block' : 'none';
+    document.getElementById('dupMatchLRN').style.display = checkData.matchedByLRN ? 'block' : 'none';
+
+    pendingOverrideData = { existingId: match.id };
+
+    document.getElementById('duplicateModal').classList.remove('hidden');
+}
+
+function cancelOverride() {
+    document.getElementById('duplicateModal').classList.add('hidden');
+    pendingOverrideData = null;
+    showStatus('Entry cancelled by user', 'info');
+}
+
+async function confirmOverride() {
+    document.getElementById('duplicateModal').classList.add('hidden');
+    
+    if (!pendingOverrideData) return;
+    
+    showLoading('Deleting old record and creating new one...');
+    
+    const formData = new FormData();
+    formData.append('firstName', document.getElementById('firstName').value);
+    formData.append('middleName', document.getElementById('middleName').value);
+    formData.append('lastName', document.getElementById('lastName').value);
+    formData.append('sex', document.getElementById('sex').value);
+    formData.append('birthday', document.getElementById('birthday').value);
+    formData.append('lrn', document.getElementById('lrn').value);
+    formData.append('section', document.getElementById('classSelect').value);
+    formData.append('address', document.getElementById('address').value);
+    formData.append('parentName', document.getElementById('parentName').value);
+    formData.append('contactNumber', document.getElementById('contactNumber').value);
+    formData.append('photo', selectedFile);
+    formData.append('existingId', pendingOverrideData.existingId);
+    
+    try {
+        const response = await fetch(`${API_URL}/api/students/override`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentStudentData = result.student;
+            showLoading('Uploading to Google Drive...');
+            showStatus('Override complete! New record created.', 'success');
+            saveFormData();
+            updateIDPreview(result.student);
+            document.getElementById('idPreview').classList.remove('hidden');
+            document.getElementById('downloadSection').classList.remove('hidden');
+            setDriveNote('Uploading to Google Drive…', 'pending');
+            pollUploadStatus(result.student.id);
+            hideLoading();
+        } else {
+            hideLoading();
+            showStatus(result.error || 'Override failed', 'info');
         }
+    } catch (error) {
+        hideLoading();
+        showStatus('Error during override: ' + error.message, 'info');
     }
     
+    pendingOverrideData = null;
+}
+
+async function submitNewStudent() {
     showLoading('Generating ID card...');
     
     const formData = new FormData();
