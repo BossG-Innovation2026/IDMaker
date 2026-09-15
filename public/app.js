@@ -426,7 +426,7 @@ function startFaceDetection() {
         const isGoodBrightness = brightness > 40 && brightness < 220;
         
         const bgWhiteness = await checkBackgroundWhiteness(video, box);
-        const isWhiteBg = bgWhiteness > 200;
+        const isWhiteBg = bgWhiteness >= 80;
         const whiteBgOK = REQUIRE_WHITE_BG ? isWhiteBg : true;
         
         ctx.strokeStyle = isCentered && isGoodSize && whiteBgOK && isStraight ? '#48bb78' : '#dd6b20';
@@ -491,33 +491,9 @@ async function checkBackgroundWhiteness(video, faceBox) {
     const h = video.videoHeight;
     canvas.width = w;
     canvas.height = h;
-    
     ctx.drawImage(video, 0, 0, w, h);
-    
-    const imageData = ctx.getImageData(0, 0, w, h);
-    const data = imageData.data;
-    
-    let bgSum = 0;
-    let bgCount = 0;
-    
-    for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-            const idx = (y * w + x) * 4;
-            const r = data[idx];
-            const g = data[idx + 1];
-            const b = data[idx + 2];
-            
-            const inFace = x >= faceBox.x && x <= faceBox.x + faceBox.width &&
-                           y >= faceBox.y && y <= faceBox.y + faceBox.height;
-            
-            if (!inFace) {
-                bgSum += (r + g + b) / 3;
-                bgCount++;
-            }
-        }
-    }
-    
-    return bgCount > 0 ? bgSum / bgCount : 128;
+    const result = await checkWhiteness(canvas, faceBox);
+    return result.whitePct;
 }
 
 async function checkWhiteness(source, faceRegion) {
@@ -532,23 +508,52 @@ async function checkWhiteness(source, faceRegion) {
     const imageData = ctx.getImageData(0, 0, w, h);
     const data = imageData.data;
 
-    // Sample background pixels — skip the face region
-    let bgSum = 0, bgCount = 0;
-    for (let y = 0; y < h; y += 4) {
-        for (let x = 0; x < w; x += 4) {
-            if (faceRegion) {
-                const inFace = x >= faceRegion.x && x <= faceRegion.x + faceRegion.width &&
-                               y >= faceRegion.y && y <= faceRegion.y + faceRegion.height;
-                if (inFace) continue;
-            }
+    // Sample edges only — background is visible around the borders
+    // Top 15%, bottom 15%, left 10%, right 10% of the image
+    const marginX = Math.round(w * 0.10);
+    const marginTop = Math.round(h * 0.15);
+    const marginBot = h - Math.round(h * 0.15);
+
+    const edgePixels = [];
+
+    // Top band
+    for (let y = 0; y < marginTop; y += 3) {
+        for (let x = 0; x < w; x += 3) {
             const idx = (y * w + x) * 4;
-            bgSum += (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
-            bgCount++;
+            edgePixels.push((data[idx] + data[idx + 1] + data[idx + 2]) / 3);
         }
     }
-    const avg = bgCount > 0 ? bgSum / bgCount : 0;
-    console.log('[WHITENESS] avg:', avg.toFixed(1), 'threshold: 200');
-    return avg;
+    // Bottom band
+    for (let y = marginBot; y < h; y += 3) {
+        for (let x = 0; x < w; x += 3) {
+            const idx = (y * w + x) * 4;
+            edgePixels.push((data[idx] + data[idx + 1] + data[idx + 2]) / 3);
+        }
+    }
+    // Left band (excluding already-sampled top/bottom corners)
+    for (let y = marginTop; y < marginBot; y += 3) {
+        for (let x = 0; x < marginX; x += 3) {
+            const idx = (y * w + x) * 4;
+            edgePixels.push((data[idx] + data[idx + 1] + data[idx + 2]) / 3);
+        }
+    }
+    // Right band
+    for (let y = marginTop; y < marginBot; y += 3) {
+        for (let x = w - marginX; x < w; x += 3) {
+            const idx = (y * w + x) * 4;
+            edgePixels.push((data[idx] + data[idx + 1] + data[idx + 2]) / 3);
+        }
+    }
+
+    if (edgePixels.length === 0) return 0;
+
+    // Sort and check: at least 80% of edge pixels must be white (>200)
+    const whiteCount = edgePixels.filter(v => v >= 200).length;
+    const whitePct = (whiteCount / edgePixels.length) * 100;
+    const avg = edgePixels.reduce((a, b) => a + b, 0) / edgePixels.length;
+
+    console.log('[WHITENESS] avg:', avg.toFixed(1), 'white%:', whitePct.toFixed(1) + '%', 'threshold: 80% white');
+    return { avg, whitePct };
 }
 
 function updateFaceChecks(faceDetected, centered, goodSize, goodLighting, whiteBg, straight) {
@@ -694,9 +699,10 @@ async function processCapturedImage(source) {
     // White background check
     lastWhiteness = null;
     if (REQUIRE_WHITE_BG) {
-        const whiteness = await checkWhiteness(source, faceRegion);
-        lastWhiteness = whiteness;
-        console.log('[PIPELINE] Whiteness:', whiteness.toFixed(1), whiteness >= 200 ? 'PASS' : 'FAIL');
+        const bgResult = await checkWhiteness(source, faceRegion);
+        lastWhiteness = bgResult;
+        const passed = bgResult.whitePct >= 80;
+        console.log('[PIPELINE] White bg:', passed ? 'PASS' : 'FAIL', bgResult.whitePct.toFixed(1) + '% white');
     }
 
     capturedPhotoData = cropToSquare(source, faceRegion, srcW, srcH);
@@ -758,16 +764,17 @@ function showPreviewModal() {
 
     const approveBtn = document.getElementById('approveBtn');
     const bgNote = document.getElementById('bgNote');
-    console.log('[PREVIEW] lastWhiteness:', lastWhiteness, 'REQUIRE_WHITE_BG:', REQUIRE_WHITE_BG);
+    const bgFails = REQUIRE_WHITE_BG && lastWhiteness && lastWhiteness.whitePct < 80;
+    console.log('[PREVIEW] lastWhiteness:', lastWhiteness, 'bgFails:', bgFails);
 
-    if (REQUIRE_WHITE_BG && lastWhiteness !== null && lastWhiteness < 200) {
+    if (bgFails) {
         console.log('[PREVIEW] Disabling approve button — bg too dark');
         approveBtn.setAttribute('disabled', 'disabled');
         approveBtn.textContent = '✕ Background not white';
         approveBtn.style.opacity = '0.4';
         approveBtn.style.pointerEvents = 'none';
         if (bgNote) {
-            bgNote.textContent = 'White background required (detected: ' + Math.round(lastWhiteness) + '/255)';
+            bgNote.textContent = 'White background required (' + Math.round(lastWhiteness.whitePct) + '% white, need 80%)';
             bgNote.classList.remove('hidden');
         }
     } else {
@@ -784,7 +791,7 @@ function showPreviewModal() {
 }
 
 function approvePhoto() {
-    if (REQUIRE_WHITE_BG && lastWhiteness !== null && lastWhiteness < 200) {
+    if (REQUIRE_WHITE_BG && lastWhiteness && lastWhiteness.whitePct < 80) {
         showStatus('White background required', 'info');
         return;
     }
