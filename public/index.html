@@ -247,6 +247,35 @@
         </div>
     </div>
 
+    <!-- Background Rejection Modal -->
+    <div id="rejectModal" class="modal hidden">
+        <div class="modal-content reject-content">
+            <div class="modal-header reject-header">
+                <h2>✕ Background Check Failed</h2>
+            </div>
+            <div class="reject-body">
+                <div class="reject-icon">⚠</div>
+                <p>The uploaded image does not have a sufficiently white background.</p>
+                <div class="reject-stats">
+                    <div class="reject-stat">
+                        <span class="stat-label">Detected</span>
+                        <span class="stat-value" id="rejectDetected">—</span>
+                    </div>
+                    <div class="reject-stat">
+                        <span class="stat-label">Required</span>
+                        <span class="stat-value">80%</span>
+                    </div>
+                </div>
+                <p class="reject-hint">Please upload another image with a plain white background.</p>
+            </div>
+            <div class="reject-actions">
+                <button type="button" class="btn-neu btn-approve" onclick="closeRejectModal()">
+                    OK, I'll try again
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Confirmation Preview Modal (Review before Generate) -->
     <div id="confirmModal" class="modal hidden">
         <div class="modal-content confirm-content">

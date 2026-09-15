@@ -660,13 +660,8 @@ async function processUploadedImage(source) {
 
     if (!bgResult.passed) {
         console.warn('[UPLOAD] Image rejected because background is not white enough');
-        showStatus(
-            'Background Check Failed\n\n' +
-            'White background detected: ' + bgResult.whitePct.toFixed(1) + '%\n' +
-            'Required: ' + bgResult.requiredPercent + '%\n\n' +
-            'Please upload another image with a plain white background.',
-            'info'
-        );
+        document.getElementById('rejectDetected').textContent = bgResult.whitePct.toFixed(1) + '%';
+        document.getElementById('rejectModal').classList.remove('hidden');
         return;
     }
 
@@ -1043,6 +1038,10 @@ function openConfirmModal() {
     document.getElementById('confirmContact').textContent = document.getElementById('contactNumber').value || '—';
 
     document.getElementById('confirmModal').classList.remove('hidden');
+}
+
+function closeRejectModal() {
+    document.getElementById('rejectModal').classList.add('hidden');
 }
 
 function closeConfirmModal() {

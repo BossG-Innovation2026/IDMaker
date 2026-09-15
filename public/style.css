@@ -834,6 +834,81 @@ body {
 }
 
 /* Confirmation Review Modal */
+/* Background Rejection Modal */
+.reject-content {
+    max-width: 380px;
+}
+
+.reject-header {
+    background: #e53e3e;
+    border-radius: 16px 16px 0 0;
+}
+
+.reject-header h2 {
+    color: #fff;
+}
+
+.reject-body {
+    padding: 20px;
+    text-align: center;
+}
+
+.reject-icon {
+    font-size: 3rem;
+    margin-bottom: 10px;
+}
+
+.reject-body p {
+    color: var(--text);
+    font-size: 0.95rem;
+    margin-bottom: 14px;
+}
+
+.reject-stats {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin: 16px 0;
+}
+
+.reject-stat {
+    text-align: center;
+}
+
+.reject-stat .stat-label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+}
+
+.reject-stat .stat-value {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #e53e3e;
+}
+
+.reject-hint {
+    font-size: 0.85rem;
+    color: var(--text-light);
+}
+
+.reject-actions {
+    padding: 0 20px 20px;
+}
+
+.reject-actions .btn-approve {
+    width: 100%;
+    background: var(--bg-color);
+    color: #e53e3e;
+    font-weight: 600;
+    box-shadow: 5px 5px 10px var(--shadow-dark),
+                -5px -5px 10px var(--shadow-light);
+}
+
 .confirm-content {
     max-width: 420px;
 }
