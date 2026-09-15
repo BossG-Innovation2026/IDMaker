@@ -426,7 +426,7 @@ function startFaceDetection() {
         const isGoodBrightness = brightness > 40 && brightness < 220;
         
         const bgWhiteness = await checkBackgroundWhiteness(video, box);
-        const isWhiteBg = bgWhiteness >= 70;
+        const isWhiteBg = bgWhiteness >= 65;
         const whiteBgOK = REQUIRE_WHITE_BG ? isWhiteBg : true;
         
         ctx.strokeStyle = isCentered && isGoodSize && whiteBgOK && isStraight ? '#48bb78' : '#dd6b20';
@@ -552,7 +552,7 @@ async function checkWhiteness(source, faceRegion) {
     const whitePct = (whiteCount / edgePixels.length) * 100;
     const avg = edgePixels.reduce((a, b) => a + b, 0) / edgePixels.length;
 
-    console.log('[WHITENESS] avg:', avg.toFixed(1), 'white%:', whitePct.toFixed(1) + '%', 'threshold: 70% white');
+    console.log('[WHITENESS] avg:', avg.toFixed(1), 'white%:', whitePct.toFixed(1) + '%', 'threshold: 65% white');
     return { avg, whitePct };
 }
 
@@ -701,7 +701,7 @@ async function processCapturedImage(source) {
     if (REQUIRE_WHITE_BG) {
         const bgResult = await checkWhiteness(source, faceRegion);
         lastWhiteness = bgResult;
-        const passed = bgResult.whitePct >= 70;
+        const passed = bgResult.whitePct >= 65;
         console.log('[PIPELINE] White bg:', passed ? 'PASS' : 'FAIL', bgResult.whitePct.toFixed(1) + '% white');
     }
 
@@ -764,7 +764,7 @@ function showPreviewModal() {
 
     const approveBtn = document.getElementById('approveBtn');
     const bgNote = document.getElementById('bgNote');
-    const bgFails = REQUIRE_WHITE_BG && lastWhiteness && lastWhiteness.whitePct < 70;
+    const bgFails = REQUIRE_WHITE_BG && lastWhiteness && lastWhiteness.whitePct < 65;
     console.log('[PREVIEW] lastWhiteness:', lastWhiteness, 'bgFails:', bgFails);
 
     if (bgFails) {
@@ -774,7 +774,7 @@ function showPreviewModal() {
         approveBtn.style.opacity = '0.4';
         approveBtn.style.pointerEvents = 'none';
         if (bgNote) {
-            bgNote.textContent = 'White background required (' + Math.round(lastWhiteness.whitePct) + '% white, need 70%)';
+            bgNote.textContent = 'White background required (' + Math.round(lastWhiteness.whitePct) + '% white, need 65%)';
             bgNote.classList.remove('hidden');
         }
     } else {
@@ -791,7 +791,7 @@ function showPreviewModal() {
 }
 
 function approvePhoto() {
-    if (REQUIRE_WHITE_BG && lastWhiteness && lastWhiteness.whitePct < 70) {
+    if (REQUIRE_WHITE_BG && lastWhiteness && lastWhiteness.whitePct < 65) {
         showStatus('White background required', 'info');
         return;
     }
