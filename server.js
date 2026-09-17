@@ -361,7 +361,6 @@ app.get('/api/students/:id/status', (req, res) => {
     driveUploaded: !!student.driveUploaded,
     driveLink: student.driveLink,
     driveFiles: student.driveFiles || null,
-    hasPdf: !!student.idCardPath,
     hasDocx: !!student.idCardDocxPath
   });
 });

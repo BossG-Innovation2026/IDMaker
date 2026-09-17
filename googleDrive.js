@@ -5,6 +5,37 @@ const ExcelJS = require('exceljs');
 
 const PARENT_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || '0ACktHqI8zSSCUk9PVA';
 
+// ── Retry helper for transient Google API errors ───────────────────
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+const RETRY_DELAYS = [1000, 3000, 9000]; // backoff for 3 attempts
+
+function isTransientError(err) {
+  const code = err.code || err.status || (err.response && err.response.status) || 0;
+  if (code === 429 || code === 403 || code === 500 || code === 502 || code === 503) return true;
+  const msg = (err.message || '').toLowerCase();
+  if (msg.includes('econnreset') || msg.includes('econnrefused') || msg.includes('socket hang up')) return true;
+  return false;
+}
+
+async function retryWithBackoff(fn, label) {
+  for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt < RETRY_DELAYS.length && isTransientError(err)) {
+        const delay = RETRY_DELAYS[attempt];
+        console.warn(`[DRIVE] ${label} attempt ${attempt + 1} failed (${err.code || err.status || err.message}), retrying in ${delay}ms...`);
+        await sleep(delay);
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
 class GoogleDriveService {
     constructor() {
         this.auth = null;
@@ -160,7 +191,7 @@ class GoogleDriveService {
             throw new Error('Google Drive not initialized');
         }
 
-        try {
+        return retryWithBackoff(async () => {
             const { Readable } = require('stream');
             const fileMetadata = {
                 name: fileName,
@@ -183,10 +214,7 @@ class GoogleDriveService {
                 id: file.data.id,
                 link: file.data.webViewLink
             };
-        } catch (error) {
-            console.error('Error uploading file:', error);
-            throw error;
-        }
+        }, `upload ${fileName}`);
     }
 
     async uploadStudentPhoto(fileBuffer, fileName, mimeType, section) {
@@ -242,9 +270,8 @@ class GoogleDriveService {
                 { header: 'Updated', key: 'updatedAt', width: 22 }
             ];
 
-            worksheet.getRow(1).font = { bold: true, size: 11 };
-            worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
             worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
 
             students.forEach((s, i) => {
                 const mi = s.middleName ? s.middleName.charAt(0) + '.' : '';
@@ -271,25 +298,36 @@ class GoogleDriveService {
 
             const buffer = await workbook.xlsx.writeBuffer();
             const fileName = `${section} - Records.xlsx`;
-            
-            const existingExcel = await this.drive.files.list({
-                q: `name='${fileName}' and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and '${folderId}' in parents and trashed=false`,
-                fields: 'files(id)',
-                spaces: 'drive',
-                supportsAllDrives: true,
-                includeItemsFromAllDrives: true
-            });
+
+            // Try to find existing Excel; if multiple exist (race condition), delete extras
+            const existingExcel = await retryWithBackoff(async () => {
+                return this.drive.files.list({
+                    q: `name='${fileName}' and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and '${folderId}' in parents and trashed=false`,
+                    fields: 'files(id)',
+                    spaces: 'drive',
+                    supportsAllDrives: true,
+                    includeItemsFromAllDrives: true
+                });
+            }, `list Excel ${fileName}`);
 
             if (existingExcel.data.files.length > 0) {
                 const { Readable } = require('stream');
-                await this.drive.files.update({
-                    fileId: existingExcel.data.files[0].id,
-                    media: {
-                        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                        body: Readable.from([buffer])
-                    },
-                    supportsAllDrives: true
-                });
+                await retryWithBackoff(async () => {
+                    await this.drive.files.update({
+                        fileId: existingExcel.data.files[0].id,
+                        media: {
+                            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                            body: Readable.from([buffer])
+                        },
+                        supportsAllDrives: true
+                    });
+                }, `update Excel ${fileName}`);
+                // Delete any extra duplicates from race conditions
+                for (let i = 1; i < existingExcel.data.files.length; i++) {
+                    try {
+                        await this.deleteDriveFile(existingExcel.data.files[i].id);
+                    } catch (_) {}
+                }
                 console.log(`Updated Excel: ${fileName}`);
                 return { success: true, fileId: existingExcel.data.files[0].id };
             } else {
@@ -307,10 +345,12 @@ class GoogleDriveService {
         await this.initialize();
         if (!this.initialized || !fileId) return false;
         try {
-            await this.drive.files.delete({
-                fileId,
-                supportsAllDrives: true
-            });
+            await retryWithBackoff(async () => {
+                await this.drive.files.delete({
+                    fileId,
+                    supportsAllDrives: true
+                });
+            }, `delete ${fileId}`);
             console.log(`[DRIVE] Deleted file: ${fileId}`);
             return true;
         } catch (e) {
@@ -431,24 +471,28 @@ class GoogleDriveService {
             const buffer = await workbook.xlsx.writeBuffer();
             const fileName = 'IDMaker - Overall Student Logs.xlsx';
 
-            const existing = await this.drive.files.list({
-                q: `name='${fileName}' and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and '${folderId}' in parents and trashed=false`,
-                fields: 'files(id)',
-                spaces: 'drive',
-                supportsAllDrives: true,
-                includeItemsFromAllDrives: true
-            });
+            const existing = await retryWithBackoff(async () => {
+                return this.drive.files.list({
+                    q: `name='${fileName}' and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and '${folderId}' in parents and trashed=false`,
+                    fields: 'files(id)',
+                    spaces: 'drive',
+                    supportsAllDrives: true,
+                    includeItemsFromAllDrives: true
+                });
+            }, 'list overall logs Excel');
 
             if (existing.data.files.length > 0) {
                 const { Readable } = require('stream');
-                await this.drive.files.update({
-                    fileId: existing.data.files[0].id,
-                    media: {
-                        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                        body: Readable.from([buffer])
-                    },
-                    supportsAllDrives: true
-                });
+                await retryWithBackoff(async () => {
+                    await this.drive.files.update({
+                        fileId: existing.data.files[0].id,
+                        media: {
+                            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                            body: Readable.from([buffer])
+                        },
+                        supportsAllDrives: true
+                    });
+                }, 'update overall logs Excel');
                 console.log(`[DRIVE] Updated overall logs Excel (${allStudents.length} students)`);
                 return { success: true, fileId: existing.data.files[0].id };
             } else {
@@ -469,26 +513,33 @@ class GoogleDriveService {
         let pageToken = null;
         let deleted = 0;
         do {
-            const res = await this.drive.files.list({
-                q: `'${folderId}' in parents and trashed=false`,
-                fields: 'nextPageToken, files(id, name, mimeType)',
-                spaces: 'drive',
-                pageSize: 100,
-                pageToken: pageToken,
-                supportsAllDrives: true,
-                includeItemsFromAllDrives: true
-            });
+            const res = await retryWithBackoff(async () => {
+                return this.drive.files.list({
+                    q: `'${folderId}' in parents and trashed=false`,
+                    fields: 'nextPageToken, files(id, name, mimeType)',
+                    spaces: 'drive',
+                    pageSize: 100,
+                    pageToken: pageToken,
+                    supportsAllDrives: true,
+                    includeItemsFromAllDrives: true
+                });
+            }, 'list folder contents');
+
             for (const file of (res.data.files || [])) {
                 try {
-                    await this.drive.files.delete({
-                        fileId: file.id,
-                        supportsAllDrives: true
-                    });
+                    await retryWithBackoff(async () => {
+                        await this.drive.files.delete({
+                            fileId: file.id,
+                            supportsAllDrives: true
+                        });
+                    }, `delete ${file.name}`);
                     deleted++;
                     console.log(`[RESET] Deleted: ${file.name}`);
                 } catch (e) {
                     console.error(`[RESET] Failed to delete ${file.name}:`, e.message);
                 }
+                // Throttle deletions to avoid hitting rate limits
+                await sleep(200);
             }
             pageToken = res.data.nextPageToken;
         } while (pageToken);

@@ -21,7 +21,9 @@ function persistQueue() {
   try {
     const dir = path.dirname(QUEUE_FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    const data = { queue, queuedIds: [...queuedIds] };
+    // Only persist IDs — never serialize large file buffers to disk
+    const ids = queue.map(j => (typeof j === 'string' ? j : j.id));
+    const data = { queue: ids, queuedIds: [...queuedIds] };
     fs.writeFileSync(QUEUE_FILE, JSON.stringify(data), 'utf8');
   } catch (e) {
     console.error('[QUEUE] Failed to persist queue:', e.message);
@@ -169,6 +171,8 @@ async function processJob(job) {
   store.update(id, { uploadStatus: 'uploading', uploadError: null });
 
   const files = buildFiles(student, job.prebuiltFiles);
+  // Release buffers from job immediately after building file list
+  job.prebuiltFiles = null;
   if (!files) {
     store.update(id, { uploadStatus: 'failed', uploadError: 'Files missing on disk' });
     return;
@@ -209,11 +213,15 @@ async function processJob(job) {
 
       // Auto-cleanup local files (P3 #10)
       cleanupLocalFiles(student);
+      // Release file buffers immediately
+      for (const f of files) f.buffer = null;
 
       return;
     } catch (error) {
       lastError = error.message || String(error);
       console.error(`[QUEUE] Attempt ${attempt}/${MAX_ATTEMPTS} failed (${id}): ${lastError}`);
+      // Release file buffers — they've been sent to the Drive API
+      for (const f of files) f.buffer = null;
       if (attempt < MAX_ATTEMPTS) await sleep(RETRY_DELAYS[attempt - 1]);
     }
   }

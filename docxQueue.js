@@ -58,6 +58,8 @@ function pump() {
       })
       .finally(() => {
         activeCount--;
+        // Release photo buffer immediately to reduce memory pressure
+        job.photoBuf = null;
         console.log(`[DOCX-QUEUE] Finished DOCX #${job.queueId.slice(0, 8)} — active: ${activeCount}/${MAX_DOCX_CONCURRENT}, queued: ${queue.length}`);
         // Keep job in Map for 30s so frontend can poll the result
         setTimeout(() => jobs.delete(job.queueId), 30000);

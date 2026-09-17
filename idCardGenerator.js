@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const PizZip = require('pizzip');
 
-const TEMPLATE_DEFAULT = path.join(__dirname, 'templates', 'id-template.docx');
+const TEMPLATE_DEFAULT = path.join(__dirname, 'templates', 'idtemp1.docx');
 const TEMPLATE_GRADE11 = path.join(__dirname, 'templates', 'idtemp2.docx');
 const TEMPLATE_ALS = path.join(__dirname, 'templates', 'idtemp3.docx');
 const TEMPLATE_SNED = path.join(__dirname, 'templates', 'idtemp4.docx');
@@ -24,17 +24,6 @@ function getTemplatePath(section) {
   return TEMPLATE_DEFAULT;
 }
 
-function getStrandFromSection(section) {
-  if (!section) return 'ACADEMIC';
-  const upper = section.toUpperCase();
-  if (upper.includes('STEM')) return 'STEM';
-  if (upper.includes('ABM')) return 'ABM';
-  if (upper.includes('HUMSS')) return 'HUMSS';
-  if (upper.includes('TVL')) return 'TVL';
-  if (upper.includes('GAS')) return 'GAS';
-  return 'ACADEMIC';
-}
-
 function escapeXml(str) {
   return String(str)
     .replace(/&/g, '&amp;')
@@ -44,32 +33,20 @@ function escapeXml(str) {
 }
 
 function insertPhoto(zip, documentXml, photoBuffer, templatePath) {
-  // Templates 2 & 3 (idtemp2, idtemp3): photo is on rId5 (image2.jpeg), rId4 is background
-  // Templates 1 & 4 (id-template, idtemp4): photo is on rId4
-  const isGrade11 = templatePath && (templatePath.includes('idtemp2') || templatePath.includes('idtemp3'));
-  const photoRid = isGrade11 ? 'rId5' : 'rId4';
+  // All templates now use rId5 (image2.jpeg) for student photo
+  // rId4 (image1.jpeg) is the card background in all templates
+  const photoRid = 'rId5';
 
-  // Replace the actual image file in the ZIP
-  let photoPlaceholder = null;
-  for (const name of ['word/media/image1.jpeg', 'word/media/image1.png', 'word/media/image2.jpeg']) {
-    if (zip.file(name)) {
-      // For grade11 templates, only replace image2.jpeg (the photo area)
-      // For default templates, only replace image1.jpeg (the photo area)
-      if (isGrade11 && name.includes('image1')) continue;
-      if (!isGrade11 && name.includes('image2')) continue;
-      photoPlaceholder = name;
-      break;
-    }
-  }
-
-  if (photoPlaceholder) {
-    zip.file(photoPlaceholder, photoBuffer);
-    console.log(`Replaced ${photoPlaceholder} with student photo (${photoBuffer.length} bytes) [${photoRid}]`);
+  // Replace image2.jpeg with the student photo
+  const photoFile = 'word/media/image2.jpeg';
+  if (zip.file(photoFile)) {
+    zip.file(photoFile, photoBuffer);
+    console.log(`Replaced ${photoFile} with student photo (${photoBuffer.length} bytes) [${photoRid}]`);
   } else {
-    console.warn('Photo placeholder not found in template');
+    console.warn('Photo placeholder (image2.jpeg) not found in template');
   }
 
-  // Find the anchor block that uses the correct rId and remove noChangeAspect lock
+  // Find the anchor block that uses rId5 and remove noChangeAspect lock
   const ridPos = documentXml.indexOf(`r:embed="${photoRid}"`);
   if (ridPos >= 0) {
     const anchorStart = documentXml.lastIndexOf('<wp:anchor', ridPos);
@@ -167,8 +144,9 @@ function replacePlaceholdersInXml(documentXml, replacements) {
 
 function generateIDCardDocx(student, photoBuffer, templatePath) {
   const tpl = templatePath || getTemplatePath(student.section);
-  const templateBuf = fs.readFileSync(tpl);
+  let templateBuf = fs.readFileSync(tpl);
   const zip = new PizZip(templateBuf);
+  templateBuf = null; // let GC reclaim while PizZip holds the data
 
   const mi = student.middleName ? student.middleName.charAt(0) + '.' : '';
   const formattedDate = new Date(student.birthday).toLocaleDateString('en-US', {
@@ -185,14 +163,14 @@ function generateIDCardDocx(student, photoBuffer, templatePath) {
     '{{ADDRESS}}': student.address || '',
     '{{GUARDIAN}}': (student.parentName || '').toUpperCase(),
     '{{CONTACT}}': student.contactNumber || '',
-    '{{LRN}}': student.lrn || '',
-    '{{SECTION}}': student.section || '',
-    '{{TIMESTAMP}}': student.createdAt ? new Date(student.createdAt).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
-    '{{STRAND}}': getStrandFromSection(student.section)
+    '{{LRN}}': student.lrn || ''
   };
 
   let documentXml = zip.file('word/document.xml').asText();
   documentXml = replacePlaceholdersInXml(documentXml, replacements);
+
+  // Clean up orphan }} runs (template artifact from birthday field)
+  documentXml = documentXml.replace(/<w:t([^>]*)>\}\}<\/w:t>/g, '<w:t$1/>');
 
   if (photoBuffer) {
     documentXml = insertPhoto(zip, documentXml, photoBuffer, tpl);
