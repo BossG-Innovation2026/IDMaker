@@ -6,15 +6,16 @@
     var REQUIRED_INTERNAL = ['firstName','lastName','lrn','section','photoLink'];
 
     // Map Excel headers → internal field names
-    // Handles both "Overall Student Logs" format and camelCase
+    // Handles "Overall Student Logs" format, camelCase, and various naming conventions
+    // Output-only columns (skipped) are mapped to null
     var HEADER_MAP = {
         'first name':    'firstName',
         'firstname':     'firstName',
         'middle name':   'middleName',
         'middlename':    'middleName',
-        'm.i.':          'middleName',
-        'm.i':           'middleName',
-        'mi':            'middleName',
+        'm.i.':          null,
+        'm.i':           null,
+        'mi':            null,
         'last name':     'lastName',
         'lastname':      'lastName',
         'surname':       'lastName',
@@ -43,7 +44,15 @@
         'photo link':    'photoLink',
         'photo':         'photoLink',
         'drive link':    'photoLink',
-        'drivelink':     'photoLink'
+        'drivelink':     'photoLink',
+        // Output-only columns — recognized but skipped
+        'entry method':  null,
+        'status':        null,
+        'upload status': null,
+        'id card link':  null,
+        'created':       null,
+        'updated':       null,
+        'overridden':    null
     };
 
     var bulkRows = [];
@@ -141,7 +150,9 @@
                 });
                 if (missing.length > 0) {
                     alert('Could not find columns for: ' + missing.join(', ') +
-                        '\n\nExpected headers like: First Name, Last Name, LRN, Section, Photo Link');
+                        '\n\nExpected columns (matching Overall Student Logs format):\n' +
+                        'LRN, Last Name, First Name, Middle Name, Sex, Section,\n' +
+                        'Birthday, Address, Parent/Guardian, Contact, Photo Link');
                     bulkRows = [];
                     return;
                 }
