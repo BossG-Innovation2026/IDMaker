@@ -9,6 +9,7 @@
         .page { display: none !important; }
         .landing-page.page.active { display: flex !important; }
         .container.page.active { display: block !important; }
+        .bulk-page.page.active { display: flex !important; }
     </style>
 </head>
 <body>
@@ -432,10 +433,114 @@
     <!-- Hidden file input -->
     <input type="file" id="cameraInput" name="photo" accept="image/*" hidden>
 
+    <!-- Gear Icon — Bulk Entry Shortcut -->
+    <button id="gearBtn" class="gear-btn" title="Bulk Entry (Admin)">⚙</button>
+
+    <!-- Passcode Modal -->
+    <div id="passcodeModal" class="modal hidden">
+        <div class="modal-content passcode-content">
+            <div class="modal-header">
+                <h2>🔒 Admin Access</h2>
+                <button type="button" class="close-btn" onclick="closePasscodeModal()">✕</button>
+            </div>
+            <div class="passcode-body">
+                <p>Enter passcode to access Bulk Entry</p>
+                <input type="password" id="passcodeInput" class="passcode-input" placeholder="Enter passcode" autocomplete="off">
+                <div id="passcodeError" class="passcode-error hidden">Invalid passcode. Try again.</div>
+            </div>
+            <div class="passcode-actions">
+                <button type="button" class="btn-neu btn-secondary" onclick="closePasscodeModal()">Cancel</button>
+                <button type="button" class="btn-neu btn-primary" id="passcodeSubmitBtn" onclick="submitPasscode()">Enter</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Entry Page -->
+    <div id="bulkPage" class="landing-page bulk-page page">
+        <div class="landing-card" style="max-width:600px;width:100%;">
+            <h1>2026 CSHS ID</h1>
+            <h2>Bulk Entry</h2>
+            <p>Upload an Excel file with student data. Photos should be Google Drive share links.</p>
+
+            <div class="bulk-columns-info">
+                <strong>Expected columns:</strong>
+                <code>firstName | middleName | lastName | sex | birthday | lrn | section | address | parentName | contactNumber | photoLink</code>
+            </div>
+
+            <!-- Excel Drop Zone -->
+            <div class="bulk-dropzone" id="bulkDropzone">
+                <div class="dropzone-icon">📄</div>
+                <div class="dropzone-text">Drag & drop Excel file here</div>
+                <div class="dropzone-sub">or</div>
+                <label class="btn-neu btn-secondary dropzone-btn">
+                    Choose File
+                    <input type="file" id="bulkFileInput" accept=".xlsx,.xls,.csv" hidden>
+                </label>
+            </div>
+
+            <div id="bulkFileInfo" class="bulk-file-info hidden"></div>
+
+            <!-- Preview Table -->
+            <div id="bulkPreview" class="bulk-preview hidden">
+                <h3>Preview (<span id="bulkRowCount">0</span> students)</h3>
+                <div class="bulk-table-wrap">
+                    <table class="bulk-table" id="bulkPreviewTable">
+                        <thead><tr id="bulkPreviewHead"></tr></thead>
+                        <tbody id="bulkPreviewBody"></tbody>
+                    </table>
+                </div>
+                <div class="bulk-actions">
+                    <button type="button" class="btn-neu btn-secondary" onclick="resetBulk()">← Cancel</button>
+                    <button type="button" class="btn-neu btn-primary" id="bulkStartBtn" onclick="startBulkUpload()">🚀 Process All</button>
+                </div>
+            </div>
+
+            <!-- Progress -->
+            <div id="bulkProgress" class="bulk-progress hidden">
+                <h3>Processing...</h3>
+                <div class="progress-bar-outer">
+                    <div class="progress-bar-inner" id="bulkProgressBar" style="width:0%"></div>
+                </div>
+                <div class="progress-stats">
+                    <span id="bulkProgressText">0 / 0</span>
+                    <span id="bulkProgressPercent">0%</span>
+                </div>
+                <div class="progress-counts">
+                    <span class="count-success">✓ <span id="bulkSuccessCount">0</span> success</span>
+                    <span class="count-fail">✕ <span id="bulkFailCount">0</span> failed</span>
+                </div>
+            </div>
+
+            <!-- Results -->
+            <div id="bulkResults" class="bulk-results hidden">
+                <h3>Results</h3>
+                <div class="bulk-table-wrap">
+                    <table class="bulk-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Name</th>
+                                <th>Section</th>
+                                <th>Status</th>
+                                <th>Error</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bulkResultsBody"></tbody>
+                    </table>
+                </div>
+                <div class="bulk-actions">
+                    <button type="button" class="btn-neu btn-primary" onclick="resetBulk()">✓ Done</button>
+                </div>
+            </div>
+
+            <button type="button" class="btn-back" style="margin-top:15px" onclick="showPage('landingPage')">← Back to Home</button>
+        </div>
+    </div>
+
     <!-- Page Navigation Script — runs FIRST, before anything else -->
     <script>
     (function() {
-        var pages = ['landingPage', 'lrnPage', 'mainForm'];
+        var pages = ['landingPage', 'lrnPage', 'mainForm', 'bulkPage'];
         function showPage(id) {
             pages.forEach(function(p) {
                 var el = document.getElementById(p);
@@ -444,6 +549,7 @@
             var target = document.getElementById(id);
             if (target) { target.classList.add('active'); target.classList.remove('page'); }
         }
+        window.showPage = showPage;
         // Start on landing page
         showPage('landingPage');
 
@@ -473,12 +579,22 @@
         document.getElementById('lrnVerify').addEventListener('keydown', function(e) {
             if (e.key === 'Enter') document.getElementById('lrnContinueBtn').click();
         });
+
+        // Gear button → open passcode modal
+        document.getElementById('gearBtn').addEventListener('click', function() {
+            document.getElementById('passcodeModal').classList.remove('hidden');
+            document.getElementById('passcodeInput').value = '';
+            document.getElementById('passcodeError').classList.add('hidden');
+            document.getElementById('passcodeInput').focus();
+        });
     })();
     </script>
 
     <!-- External libs -->
     <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="app.js?v=102"></script>
+    <script src="bulk.js?v=100"></script>
 </body>
 </html>

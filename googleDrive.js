@@ -377,6 +377,37 @@ class GoogleDriveService {
         return deleted;
     }
 
+    async downloadPhotoFromLink(url) {
+        await this.initialize();
+        if (!this.initialized) throw new Error('Google Drive not initialized');
+
+        // Extract file ID from various Google Drive link formats
+        let fileId = null;
+        const patterns = [
+            /\/d\/([a-zA-Z0-9_-]{20,})/,
+            /id=([a-zA-Z0-9_-]{20,})/,
+            /\/file\/d\/([a-zA-Z0-9_-]{20,})/
+        ];
+        for (const pat of patterns) {
+            const m = url.match(pat);
+            if (m) { fileId = m[1]; break; }
+        }
+
+        if (!fileId) {
+            throw new Error('Could not extract file ID from URL: ' + url);
+        }
+
+        const res = await retryWithBackoff(async () => {
+            return this.drive.files.get({
+                fileId: fileId,
+                alt: 'media',
+                supportsAllDrives: true
+            }, { responseType: 'arraybuffer' });
+        }, `download photo ${fileId}`);
+
+        return Buffer.from(res.data);
+    }
+
     async generateOverallLogsExcel(folderId) {
         await this.initialize();
         if (!this.initialized) throw new Error('Google Drive not initialized');

@@ -1366,3 +1366,226 @@ body {
 .btn-back:active {
     box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
 }
+
+/* ═══════════════════════════════════════════════
+   GEAR BUTTON
+   ═══════════════════════════════════════════════ */
+.gear-btn {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: var(--bg-color);
+    box-shadow: 4px 4px 8px var(--shadow-dark), -4px -4px 8px var(--shadow-light);
+    font-size: 1.3rem;
+    color: var(--text-light);
+    cursor: pointer;
+    z-index: 999;
+    transition: all 0.3s ease;
+    opacity: 0.5;
+}
+.gear-btn:hover {
+    opacity: 1;
+    transform: rotate(60deg);
+    color: var(--primary);
+}
+
+/* ═══════════════════════════════════════════════
+   PASSCODE MODAL
+   ═══════════════════════════════════════════════ */
+.passcode-content {
+    max-width: 380px;
+}
+.passcode-body {
+    padding: 10px 20px 20px;
+    text-align: center;
+}
+.passcode-body p {
+    margin-bottom: 15px;
+    color: var(--text-light);
+    font-size: 0.9rem;
+}
+.passcode-input {
+    width: 100%;
+    padding: 14px 16px;
+    border: none;
+    border-radius: 12px;
+    background: var(--bg-color);
+    box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
+    font-size: 1.1rem;
+    text-align: center;
+    letter-spacing: 4px;
+    color: var(--text);
+    outline: none;
+}
+.passcode-error {
+    margin-top: 10px;
+    font-size: 0.85rem;
+    color: #e53e3e;
+    font-weight: 600;
+}
+.passcode-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    padding: 0 20px 20px;
+}
+
+/* ═══════════════════════════════════════════════
+   BULK ENTRY PAGE
+   ═══════════════════════════════════════════════ */
+.bulk-columns-info {
+    background: var(--bg-color);
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    box-shadow: inset 3px 3px 6px var(--shadow-dark), inset -3px -3px 6px var(--shadow-light);
+    font-size: 0.8rem;
+    color: var(--text-light);
+}
+.bulk-columns-info strong {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--text);
+}
+.bulk-columns-info code {
+    font-size: 0.72rem;
+    word-break: break-all;
+    color: var(--primary);
+}
+
+/* Dropzone */
+.bulk-dropzone {
+    border: 2px dashed var(--shadow-dark);
+    border-radius: 16px;
+    padding: 30px 20px;
+    text-align: center;
+    margin-bottom: 15px;
+    transition: all 0.3s ease;
+    background: var(--bg-color);
+}
+.bulk-dropzone.dragover {
+    border-color: var(--primary);
+    background: rgba(102,126,234,0.05);
+}
+.dropzone-icon {
+    font-size: 2.5rem;
+    margin-bottom: 8px;
+}
+.dropzone-text {
+    font-size: 0.95rem;
+    color: var(--text);
+    margin-bottom: 8px;
+}
+.dropzone-sub {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    margin-bottom: 12px;
+}
+.dropzone-btn {
+    cursor: pointer;
+    display: inline-block;
+}
+
+/* File Info */
+.bulk-file-info {
+    background: var(--bg-color);
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 15px;
+    box-shadow: 3px 3px 6px var(--shadow-dark), -3px -3px 6px var(--shadow-light);
+    font-size: 0.85rem;
+    color: var(--text);
+}
+.bulk-file-info .file-name {
+    font-weight: 600;
+}
+.bulk-file-info .file-count {
+    color: var(--primary);
+    font-weight: 600;
+}
+
+/* Preview */
+.bulk-preview h3,
+.bulk-results h3,
+.bulk-progress h3 {
+    font-size: 1rem;
+    color: var(--text);
+    margin-bottom: 12px;
+}
+.bulk-table-wrap {
+    max-height: 250px;
+    overflow-y: auto;
+    border-radius: 12px;
+    box-shadow: inset 3px 3px 6px var(--shadow-dark), inset -3px -3px 6px var(--shadow-light);
+    margin-bottom: 15px;
+}
+.bulk-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.75rem;
+}
+.bulk-table th {
+    background: var(--primary);
+    color: #fff;
+    padding: 8px 10px;
+    text-align: left;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+.bulk-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(163,177,198,0.2);
+    color: var(--text);
+}
+.bulk-table tbody tr:hover {
+    background: rgba(102,126,234,0.05);
+}
+
+.bulk-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+}
+
+/* Progress */
+.bulk-progress {
+    margin-bottom: 15px;
+}
+.progress-bar-outer {
+    width: 100%;
+    height: 12px;
+    border-radius: 6px;
+    background: var(--bg-color);
+    box-shadow: inset 3px 3px 6px var(--shadow-dark), inset -3px -3px 6px var(--shadow-light);
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+.progress-bar-inner {
+    height: 100%;
+    border-radius: 6px;
+    background: linear-gradient(90deg, var(--primary), var(--success));
+    transition: width 0.3s ease;
+}
+.progress-stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    color: var(--text);
+    margin-bottom: 8px;
+}
+.progress-counts {
+    display: flex;
+    gap: 20px;
+    font-size: 0.85rem;
+}
+.count-success { color: var(--success); font-weight: 600; }
+.count-fail { color: #e53e3e; font-weight: 600; }
+
+/* Results */
+.bulk-results .status-ok { color: var(--success); font-weight: 600; }
+.bulk-results .status-fail { color: #e53e3e; font-weight: 600; }

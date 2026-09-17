@@ -343,6 +343,102 @@ app.post('/api/students', rateLimiter, upload.single('photo'), async (req, res) 
   }
 });
 
+// ── Bulk Entry endpoint — accepts JSON student data with photo link ──
+app.post('/api/bulk-students', rateLimiter, async (req, res) => {
+  try {
+    const {
+      firstName, middleName, lastName, sex, birthday,
+      lrn, section, address, parentName, contactNumber, photoLink
+    } = req.body;
+
+    if (!firstName || !lastName || !lrn || !section || !photoLink) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Backend duplicate check
+    const dupCheck = store.checkDuplicate(firstName, lastName, lrn);
+    if (dupCheck.isDuplicate) {
+      return res.status(409).json({
+        error: 'DUPLICATE',
+        duplicate: true,
+        matchedByName: dupCheck.matchedByName,
+        matchedByLRN: dupCheck.matchedByLRN,
+        existing: {
+          id: dupCheck.matches[0].id,
+          firstName: dupCheck.matches[0].firstName,
+          lastName: dupCheck.matches[0].lastName,
+          lrn: dupCheck.matches[0].lrn,
+          section: dupCheck.matches[0].section
+        }
+      });
+    }
+
+    // Download photo from Google Drive link
+    let photoBuffer;
+    try {
+      photoBuffer = await googleDrive.downloadPhotoFromLink(photoLink);
+    } catch (dlErr) {
+      console.error(`[BULK] Failed to download photo from ${photoLink}:`, dlErr.message);
+      return res.status(400).json({ error: 'Failed to download photo: ' + dlErr.message });
+    }
+
+    // Save photo to disk
+    const { v4: uuidv4 } = require('uuid');
+    const ext = '.jpg';
+    const photoFilename = `${uuidv4()}${ext}`;
+    const photoPath = path.join(__dirname, 'uploads', photoFilename);
+    fs.writeFileSync(photoPath, photoBuffer);
+
+    const student = {
+      id: uuidv4(),
+      firstName,
+      middleName: middleName || '',
+      lastName,
+      sex: sex || '',
+      birthday: birthday || '',
+      lrn,
+      section,
+      address: address || '',
+      parentName: parentName || '',
+      contactNumber: contactNumber || '',
+      photoPath: photoFilename,
+      photoMime: 'image/jpeg',
+      photoSource: 'bulk',
+      uploadStatus: 'pending',
+      uploadError: null,
+      driveUploaded: false,
+      driveLink: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    store.add(student);
+
+    // Enqueue DOCX generation
+    const { queueId, position, promise } = docxQueue.enqueueDOCX(student, photoBuffer);
+
+    // Background: wait for DOCX, then enqueue Drive upload
+    promise.then(result => {
+      if (result && result.docxPath) {
+        store.update(student.id, { idCardDocxPath: `uploads/${path.basename(result.docxPath)}` });
+      }
+      uploadQueue.enqueue(student.id, { photo: photoBuffer, photoExt: ext });
+    }).catch(err => {
+      console.error('[BULK] DOCX generation failed:', err.message);
+      store.update(student.id, { uploadStatus: 'failed', uploadError: err.message });
+    });
+
+    res.status(202).json({
+      success: true,
+      student: present(student),
+      queue: { queueId, position }
+    });
+  } catch (error) {
+    console.error('Bulk student error:', error);
+    res.status(500).json({ error: 'Failed to process bulk student: ' + error.message });
+  }
+});
+
 // Get all students
 app.get('/api/students', (req, res) => {
   res.json(store.all().map(present));
