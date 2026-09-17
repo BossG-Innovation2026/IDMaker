@@ -77,7 +77,7 @@ async function smartCrop(imageBuffer) {
   const cropped = await sharp(imageBuffer)
     .extract({ left, top, width: cropSize, height: cropSize })
     .resize(CROP_SIZE, CROP_SIZE, { fit: 'fill' })
-    .jpeg({ quality: 0.92 })
+    .jpeg({ quality: 92 })
     .toBuffer();
 
   return cropped;
