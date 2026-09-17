@@ -3,8 +3,49 @@
     'use strict';
 
     var PASSCODE = 'cshs305872';
-    var REQUIRED_COLS = ['firstName','lastName','lrn','section','photoLink'];
-    var ALL_COLS = ['firstName','middleName','lastName','sex','birthday','lrn','section','address','parentName','contactNumber','photoLink'];
+    var REQUIRED_INTERNAL = ['firstName','lastName','lrn','section','photoLink'];
+
+    // Map Excel headers → internal field names
+    // Handles both "Overall Student Logs" format and camelCase
+    var HEADER_MAP = {
+        'first name':    'firstName',
+        'firstname':     'firstName',
+        'middle name':   'middleName',
+        'middlename':    'middleName',
+        'm.i.':          'middleName',
+        'm.i':           'middleName',
+        'mi':            'middleName',
+        'last name':     'lastName',
+        'lastname':      'lastName',
+        'surname':       'lastName',
+        'sex':           'sex',
+        'gender':        'sex',
+        'birthday':      'birthday',
+        'birthdate':     'birthday',
+        'birth date':    'birthday',
+        'date of birth': 'birthday',
+        'dob':           'birthday',
+        'lrn':           'lrn',
+        'learner reference number': 'lrn',
+        'section':       'section',
+        'class':         'section',
+        'address':       'address',
+        'full address':  'address',
+        'parent/guardian': 'parentName',
+        'parent':        'parentName',
+        'guardian':      'parentName',
+        'parentname':    'parentName',
+        'contact':       'contactNumber',
+        'contact number': 'contactNumber',
+        'contactnumber': 'contactNumber',
+        'phone':         'contactNumber',
+        'photolink':     'photoLink',
+        'photo link':    'photoLink',
+        'photo':         'photoLink',
+        'drive link':    'photoLink',
+        'drivelink':     'photoLink'
+    };
+
     var bulkRows = [];
     var bulkRunning = false;
 
@@ -32,6 +73,19 @@
     function showBulkPage() {
         window.showPage('bulkPage');
         resetBulk();
+    }
+
+    // ── Map Excel headers to internal names ───────────────────────
+    function mapHeaders(headers) {
+        var mapping = {};
+        headers.forEach(function(h) {
+            var key = h.trim().toLowerCase();
+            var internal = HEADER_MAP[key];
+            if (internal) {
+                mapping[h.trim()] = internal;
+            }
+        });
+        return mapping;
     }
 
     // ── File handling ─────────────────────────────────────────────
@@ -76,28 +130,41 @@
                     return;
                 }
 
-                // Normalize column names (trim, lowercase)
+                // Map headers from Excel → internal field names
+                var rawHeaders = Object.keys(json[0]);
+                var headerMap = mapHeaders(rawHeaders);
+
+                // Check that required fields are mappable
+                var mappedValues = Object.values(headerMap);
+                var missing = REQUIRED_INTERNAL.filter(function(c) {
+                    return !mappedValues.includes(c);
+                });
+                if (missing.length > 0) {
+                    alert('Could not find columns for: ' + missing.join(', ') +
+                        '\n\nExpected headers like: First Name, Last Name, LRN, Section, Photo Link');
+                    bulkRows = [];
+                    return;
+                }
+
+                // Normalize each row
                 bulkRows = json.map(function(row) {
                     var normalized = {};
                     Object.keys(row).forEach(function(k) {
-                        var key = k.trim();
-                        // Try to match case-insensitively
-                        var match = ALL_COLS.find(function(c) {
-                            return c.toLowerCase() === key.toLowerCase();
-                        });
-                        normalized[match || key] = String(row[k]).trim();
+                        var internal = headerMap[k.trim()];
+                        if (internal) {
+                            normalized[internal] = String(row[k]).trim();
+                        }
                     });
                     return normalized;
                 });
 
-                // Validate required columns
-                var headers = Object.keys(bulkRows[0]);
-                var missing = REQUIRED_COLS.filter(function(c) {
-                    return !headers.some(function(h) { return h.toLowerCase() === c.toLowerCase(); });
+                // Filter out rows with no firstName or lastName (header rows, blank rows)
+                bulkRows = bulkRows.filter(function(r) {
+                    return r.firstName && r.lastName;
                 });
-                if (missing.length > 0) {
-                    alert('Missing required columns: ' + missing.join(', '));
-                    bulkRows = [];
+
+                if (bulkRows.length === 0) {
+                    alert('No valid student rows found in the file.');
                     return;
                 }
 
@@ -126,14 +193,15 @@
         body.innerHTML = '';
 
         var cols = ['firstName','lastName','section','lrn','photoLink'];
-        cols.forEach(function(c) {
+        var labels = ['First Name','Last Name','Section','LRN','Photo Link'];
+        labels.forEach(function(lbl) {
             var th = document.createElement('th');
-            th.textContent = c;
+            th.textContent = lbl;
             head.appendChild(th);
         });
 
         var showRows = bulkRows.slice(0, 10);
-        showRows.forEach(function(row, i) {
+        showRows.forEach(function(row) {
             var tr = document.createElement('tr');
             cols.forEach(function(c) {
                 var td = document.createElement('td');
@@ -192,7 +260,6 @@
             var error = '';
 
             try {
-                // Validate required fields
                 if (!row.firstName || !row.lastName || !row.lrn || !row.section || !row.photoLink) {
                     throw new Error('Missing required field');
                 }
@@ -206,7 +273,7 @@
                     lrn: row.lrn,
                     section: row.section,
                     address: row.address || '',
-                    parentName: row.parentName || '',
+                    parentName: (row.parentName || '').toUpperCase(),
                     contactNumber: row.contactNumber || '',
                     photoLink: row.photoLink
                 };
@@ -237,7 +304,6 @@
 
             results.push({ index: i + 1, name: name, section: row.section || '', status: status, error: error });
 
-            // Update progress
             var pct = Math.round(((i + 1) / total) * 100);
             document.getElementById('bulkProgressBar').style.width = pct + '%';
             document.getElementById('bulkProgressText').textContent = (i + 1) + ' / ' + total;
@@ -246,7 +312,6 @@
             document.getElementById('bulkFailCount').textContent = failed;
         }
 
-        // Show results
         document.getElementById('bulkProgress').classList.add('hidden');
         document.getElementById('bulkResults').classList.remove('hidden');
 
@@ -254,7 +319,7 @@
         tbody.innerHTML = '';
         results.forEach(function(r) {
             var tr = document.createElement('tr');
-            var statusClass = r.status === 'done' ? 'status-ok' : (r.status === 'duplicate' ? 'status-fail' : 'status-fail');
+            var statusClass = r.status === 'done' ? 'status-ok' : 'status-fail';
             var statusText = r.status === 'done' ? '✓ Done' : (r.status === 'duplicate' ? '⚠ Duplicate' : '✕ Failed');
             tr.innerHTML =
                 '<td>' + r.index + '</td>' +
