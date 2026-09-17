@@ -376,15 +376,32 @@ app.post('/api/bulk-students', rateLimiter, async (req, res) => {
     }
 
     // Download photo from Google Drive link
-    let photoBuffer;
+    let rawPhotoBuffer;
     try {
-      photoBuffer = await googleDrive.downloadPhotoFromLink(photoLink);
+      rawPhotoBuffer = await googleDrive.downloadPhotoFromLink(photoLink);
     } catch (dlErr) {
       console.error(`[BULK] Failed to download photo from ${photoLink}:`, dlErr.message);
       return res.status(400).json({ error: 'Failed to download photo: ' + dlErr.message });
     }
 
-    // Save photo to disk
+    // Process photo: white bg check → face detection → crop to square
+    const { processBulkPhoto } = require('./photoProcessor');
+    let processedPhoto;
+    try {
+      processedPhoto = await processBulkPhoto(rawPhotoBuffer);
+    } catch (procErr) {
+      console.error(`[BULK] Photo processing error for ${firstName} ${lastName}:`, procErr.message);
+      return res.status(400).json({ error: 'Photo processing failed: ' + procErr.message });
+    }
+
+    if (!processedPhoto.success) {
+      console.warn(`[BULK] Photo rejected for ${firstName} ${lastName}: ${processedPhoto.error}`);
+      return res.status(400).json({ error: processedPhoto.error });
+    }
+
+    const photoBuffer = processedPhoto.processedBuffer;
+
+    // Save processed photo to disk
     const { v4: uuidv4 } = require('uuid');
     const ext = '.jpg';
     const photoFilename = `${uuidv4()}${ext}`;
@@ -417,7 +434,7 @@ app.post('/api/bulk-students', rateLimiter, async (req, res) => {
 
     store.add(student);
 
-    // Enqueue DOCX generation
+    // Enqueue DOCX generation (processed buffer already cropped/square)
     const { queueId, position, promise } = docxQueue.enqueueDOCX(student, photoBuffer);
 
     // Background: wait for DOCX, then enqueue Drive upload
