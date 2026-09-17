@@ -258,6 +258,7 @@ class GoogleDriveService {
                 { header: 'LRN', key: 'lrn', width: 15 },
                 { header: 'Last Name', key: 'lastName', width: 18 },
                 { header: 'First Name', key: 'firstName', width: 18 },
+                { header: 'Middle Name', key: 'middleName', width: 18 },
                 { header: 'M.I.', key: 'mi', width: 8 },
                 { header: 'Sex', key: 'sex', width: 8 },
                 { header: 'Birthday', key: 'birthday', width: 15 },
@@ -267,7 +268,8 @@ class GoogleDriveService {
                 { header: 'Photo Link', key: 'photoLink', width: 25 },
                 { header: 'ID Card Link', key: 'idCardLink', width: 25 },
                 { header: 'Created', key: 'createdAt', width: 22 },
-                { header: 'Updated', key: 'updatedAt', width: 22 }
+                { header: 'Updated', key: 'updatedAt', width: 22 },
+                { header: 'Entry Method', key: 'entryMethod', width: 15 }
             ];
 
             worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -283,6 +285,7 @@ class GoogleDriveService {
                     lrn: s.lrn,
                     lastName: s.lastName,
                     firstName: s.firstName,
+                    middleName: s.middleName || '',
                     mi: mi,
                     sex: s.sex || '',
                     birthday: new Date(s.birthday).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
@@ -292,7 +295,8 @@ class GoogleDriveService {
                     photoLink: photoLink,
                     idCardLink: idCardLink,
                     createdAt: s.createdAt ? new Date(s.createdAt).toLocaleString() : '',
-                    updatedAt: s.updatedAt ? new Date(s.updatedAt).toLocaleString() : ''
+                    updatedAt: s.updatedAt ? new Date(s.updatedAt).toLocaleString() : '',
+                    entryMethod: s.entryMethod || ''
                 });
             });
 
@@ -425,6 +429,7 @@ class GoogleDriveService {
                 { header: 'LRN', key: 'lrn', width: 15 },
                 { header: 'Last Name', key: 'lastName', width: 18 },
                 { header: 'First Name', key: 'firstName', width: 18 },
+                { header: 'Middle Name', key: 'middleName', width: 18 },
                 { header: 'M.I.', key: 'mi', width: 8 },
                 { header: 'Sex', key: 'sex', width: 8 },
                 { header: 'Section', key: 'section', width: 15 },
@@ -437,6 +442,7 @@ class GoogleDriveService {
                 { header: 'ID Card Link', key: 'idCardLink', width: 25 },
                 { header: 'Created', key: 'createdAt', width: 22 },
                 { header: 'Updated', key: 'updatedAt', width: 22 },
+                { header: 'Entry Method', key: 'entryMethod', width: 15 },
                 { header: 'Overridden', key: 'overridden', width: 20 }
             ];
 
@@ -456,6 +462,7 @@ class GoogleDriveService {
                     lrn: s.lrn,
                     lastName: s.lastName,
                     firstName: s.firstName,
+                    middleName: s.middleName || '',
                     mi: mi,
                     sex: s.sex || '',
                     section: s.section,
@@ -468,6 +475,7 @@ class GoogleDriveService {
                     idCardLink: idCardLink,
                     createdAt: s.createdAt ? new Date(s.createdAt).toLocaleString() : '',
                     updatedAt: s.updatedAt ? new Date(s.updatedAt).toLocaleString() : '',
+                    entryMethod: s.entryMethod || '',
                     overridden: s.overriddenAt ? 'OVERRIDDEN (' + new Date(s.overriddenAt).toLocaleString() + ')' : 'OVERRIDDEN'
                 });
             });
@@ -483,6 +491,7 @@ class GoogleDriveService {
                     lrn: s.lrn,
                     lastName: s.lastName,
                     firstName: s.firstName,
+                    middleName: s.middleName || '',
                     mi: mi,
                     sex: s.sex || '',
                     section: s.section,
@@ -495,6 +504,7 @@ class GoogleDriveService {
                     idCardLink: idCardLink,
                     createdAt: s.createdAt ? new Date(s.createdAt).toLocaleString() : '',
                     updatedAt: s.updatedAt ? new Date(s.updatedAt).toLocaleString() : '',
+                    entryMethod: s.entryMethod || '',
                     overridden: ''
                 });
             });
