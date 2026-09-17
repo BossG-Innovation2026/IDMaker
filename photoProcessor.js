@@ -3,7 +3,7 @@ const sharp = require('sharp');
 // ── Constants (matching client-side) ────────────────────────────────
 const WHITE_THRESHOLD = 230;
 const COLOR_TOLERANCE = 25;
-const REQUIRED_WHITE_PERCENT = 75;
+const REQUIRED_WHITE_PERCENT = 65;
 const CROP_SIZE = 600;
 const UPWARD_SHIFT = 0.10;
 
