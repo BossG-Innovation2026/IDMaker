@@ -154,6 +154,10 @@ app.post('/api/students/override', rateLimiter, upload.single('photo'), async (r
     if (!firstName || !lastName || !sex || !birthday || !lrn || !section || !address || !parentName || !contactNumber) {
       return res.status(400).json({ error: 'All required fields must be filled' });
     }
+    const parentWords = parentName.trim().split(/\s+/).filter(Boolean);
+    if (parentWords.length < 2) {
+      return res.status(400).json({ error: 'Parent/Guardian name must be at least 2 words' });
+    }
     if (!req.file) {
       return res.status(400).json({ error: 'Photo is required' });
     }
@@ -269,6 +273,12 @@ app.post('/api/students', rateLimiter, upload.single('photo'), async (req, res) 
       return res.status(400).json({ error: 'All required fields must be filled' });
     }
 
+    // Validate parent/guardian name is at least 2 words
+    const parentWords = parentName.trim().split(/\s+/).filter(Boolean);
+    if (parentWords.length < 2) {
+      return res.status(400).json({ error: 'Parent/Guardian name must be at least 2 words' });
+    }
+
     // Backend duplicate check — authoritative
     const dupCheck = store.checkDuplicate(firstName, lastName, lrn);
     if (dupCheck.isDuplicate) {
@@ -355,6 +365,14 @@ app.post('/api/bulk-students', rateLimiter, async (req, res) => {
 
     if (!firstName || !lastName || !lrn || !section || !photoLink) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Validate parent/guardian name is at least 2 words (if provided)
+    if (parentName && parentName.trim()) {
+      const parentWords = parentName.trim().split(/\s+/).filter(Boolean);
+      if (parentWords.length < 2) {
+        return res.status(400).json({ error: 'Parent/Guardian name must be at least 2 words' });
+      }
     }
 
     // Backend duplicate check

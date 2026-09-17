@@ -1038,6 +1038,14 @@ async function handleSubmit(e) {
         showStatus('Please capture a photo first', 'info');
         return;
     }
+
+    const parentVal = document.getElementById('parentName').value.trim();
+    const parentWords = parentVal.split(/\s+/).filter(Boolean);
+    if (parentWords.length < 2) {
+        showStatus('Parent/Guardian name must be at least 2 words (e.g. Juan Dela Cruz)', 'info');
+        document.getElementById('parentName').focus();
+        return;
+    }
     
     openConfirmModal();
 }
