@@ -92,17 +92,31 @@ function scheduleIdleExcel() {
   idleTimer = setTimeout(async () => {
     console.log('[QUEUE] Queue idle — generating Excel files...');
     try {
-      const sections = new Set(store.all().map(s => s.section).filter(Boolean));
-      for (const section of sections) {
-        const sectionStudents = store.all().filter(s => s.section === section);
-        const folderId = googleDrive.folderCache[
-          `${process.env.GOOGLE_DRIVE_FOLDER_ID || '0ACktHqI8zSSCUk9PVA'}/${section}`
-        ];
-        if (folderId) {
-          await googleDrive.generateSectionExcel(section, sectionStudents, folderId);
-        }
+      const allStudents = store.all();
+      // Group by section, then separate by entry method
+      const sectionGroups = {};
+      for (const s of allStudents) {
+        if (!s.section) continue;
+        const key = s.section;
+        if (!sectionGroups[key]) sectionGroups[key] = { individual: [], bulk: [] };
+        const bucket = s.entryMethod === 'Bulk' ? sectionGroups[key].bulk : sectionGroups[key].individual;
+        bucket.push(s);
       }
       const rootFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID || '0ACktHqI8zSSCUk9PVA';
+      for (const [section, groups] of Object.entries(sectionGroups)) {
+        // Regular section Excel
+        const folderId = googleDrive.folderCache[`${rootFolderId}/${section}`];
+        if (folderId) {
+          await googleDrive.generateSectionExcel(section, groups.individual, folderId);
+        }
+        // Bulk section Excel (goes to _bulk folder)
+        if (groups.bulk.length > 0) {
+          const bulkFolderId = googleDrive.folderCache[`${rootFolderId}/${section}_bulk`];
+          if (bulkFolderId) {
+            await googleDrive.generateSectionExcel(section + '_bulk', groups.bulk, bulkFolderId);
+          }
+        }
+      }
       await googleDrive.generateOverallLogsExcel(rootFolderId);
     } catch (err) {
       console.error('[QUEUE] Idle Excel generation failed:', err.message);
@@ -185,10 +199,12 @@ async function processJob(job) {
       let sectionFolderId = null;
 
       // Upload files sequentially to avoid folder creation race condition
+      // Bulk entries get a _bulk suffix on the Drive folder
+      const driveSection = student.entryMethod === 'Bulk' ? student.section + '_bulk' : student.section;
       for (const file of files) {
-        console.log(`[QUEUE] Uploading ${file.name} (${(file.buffer.length / 1024).toFixed(1)}KB) → ${student.section}/`);
+        console.log(`[QUEUE] Uploading ${file.name} (${(file.buffer.length / 1024).toFixed(1)}KB) → ${driveSection}/`);
         const result = await googleDrive.uploadStudentPhoto(
-          file.buffer, file.name, file.mimeType, student.section
+          file.buffer, file.name, file.mimeType, driveSection
         );
         if (!result.success) throw new Error(result.error || 'upload failed');
         if (result.folderId) sectionFolderId = result.folderId;
